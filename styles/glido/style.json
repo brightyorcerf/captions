@@ -1,0 +1,14 @@
+{
+  "name": "Glido",
+  "fontScale": 0.058,
+  "charWidth": 0.6,
+  "maxLines": 2,
+  "position": { "portrait": 0.68, "square": 0.72, "landscape": 0.82 },
+  "chunk": { "minWords": 2, "maxWords": 4, "maxGap": 0.3, "hold": 0.2 },
+  "colors": { "text": "#ffffff", "active": "#34c375" },
+  "glow": {
+    "on": "0 0.06em 0 rgba(25,25,25,1), 0 0 0.4em rgba(52,195,117,0.5)",
+    "off": "0 0.06em 0 rgba(25,25,25,1), 0 0 0em rgba(52,195,117,0)"
+  },
+  "motion": { "activeScale": 1.12, "dimOpacity": 0.7, "pop": 0.12, "in": 0.2, "out": 0.15 }
+}

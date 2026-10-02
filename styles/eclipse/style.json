@@ -1,0 +1,14 @@
+{
+  "name": "Eclipse",
+  "fontScale": 0.085,
+  "charWidth": 0.72,
+  "maxLines": 2,
+  "position": { "portrait": 0.70, "square": 0.74, "landscape": 0.80 },
+  "chunk": { "minWords": 3, "maxWords": 5, "maxGap": 0.35, "hold": 0.25 },
+  "colors": { "text": "#ffffff", "active": "#b6ff3b" },
+  "glow": {
+    "on": "0 0 0.18em rgba(182,255,59,0.95), 0 0 0.55em rgba(182,255,59,0.6)",
+    "off": "0 0 0em rgba(182,255,59,0), 0 0 0em rgba(182,255,59,0)"
+  },
+  "motion": { "activeScale": 1.2, "dimOpacity": 0.5, "pop": 0.14, "in": 0.18, "out": 0.12 }
+}

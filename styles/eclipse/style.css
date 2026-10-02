@@ -1,0 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=block");
+
+.phrase {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: #fff;
+  /* stroke keeps text legible on bright footage and leaves text-shadow free for the glow */
+  -webkit-text-stroke: 0.06em rgba(0, 0, 0, 0.85);
+  paint-order: stroke fill;
+}
