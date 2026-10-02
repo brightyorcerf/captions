@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eclipse Captions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="sky" aria-hidden="true"></canvas>
+
+  <!-- landing -->
+  <main id="landing">
+    <h1 class="wordmark">eclipse</h1>
+    <p class="tagline">Drop a talking-head video. Get word-perfect,<br>animated captions back. In your style, in any language.</p>
+
+    <form id="upload" class="bar">
+      <label class="drop" for="file">
+        <input id="file" name="video" type="file" accept="video/mp4,video/quicktime,video/webm" required>
+        <span id="drop-text">Drop a video, or click to browse</span>
+      </label>
+      <select name="style" aria-label="Caption style">
+        <option value="eclipse">eclipse</option>
+        <option value="glido">glido</option>
+      </select>
+      <button type="submit" class="go" disabled>Caption</button>
+    </form>
+
+    <a class="samples" href="#samples">sample renders ↓</a>
+    <p class="hint">10s to 3min · mp4 / mov / webm · keys never leave the server</p>
+  </main>
+
+  <!-- workspace: shown once a job exists -->
+  <section id="workspace" hidden>
+    <header class="ws-head">
+      <button class="link" id="back">← new video</button>
+      <span class="mono" id="job-name"></span>
+    </header>
+
+    <ol class="steps mono" id="steps">
+      <li data-step="audio">extract audio</li>
+      <li data-step="transcribe">transcribe</li>
+      <li data-step="chunk">chunk</li>
+      <li data-step="compose">compose</li>
+      <li data-step="render">render</li>
+    </ol>
+
+    <div class="ws-body">
+      <div class="preview">
+        <iframe id="preview" title="Caption preview"></iframe>
+      </div>
+      <aside class="transcript">
+        <h2 class="mono">transcript</h2>
+        <p class="hint-dark">Click a word to fix it. Re-render costs no API call.</p>
+        <div id="phrases"></div>
+        <div class="actions">
+          <button class="ghost" id="rerender" disabled>Re-render preview</button>
+          <a class="go" id="export" aria-disabled="true">Export MP4</a>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
