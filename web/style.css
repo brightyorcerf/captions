@@ -89,6 +89,9 @@ select {
 .steps li.active { background: var(--white); color: var(--ink); }
 .steps li.done { background: var(--ink); color: var(--green); }
 .steps li.done::before { content: "✓ "; }
+.steps li.failed { background: #e31b23; color: var(--white); }
+.status:empty { display: none; }
+.status { background: var(--ink); color: var(--white); padding: 10px 14px; border-radius: 8px; margin: 0 0 12px; font-size: 13px; }
 
 .ws-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; }
 .preview {

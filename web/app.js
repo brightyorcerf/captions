@@ -67,8 +67,10 @@ form.addEventListener('submit', async e => {
   e.preventDefault();
   go.disabled = true; go.textContent = 'Uploading…';
   try {
-    const res = await fetch('/api/jobs', { method: 'POST', body: new FormData(form) });
-    if (!res.ok) throw new Error(await res.text());
+    const f = file.files[0];
+    const q = new URLSearchParams({ name: f.name, style: form.elements.style.value });
+    const res = await fetch(`/api/jobs?${q}`, { method: 'POST', body: f });
+    if (!res.ok) throw new Error((await res.json()).error);
     const { id } = await res.json();
     openJob(id, file.files[0].name);
   } catch (err) {
@@ -86,7 +88,13 @@ const steps = [...document.querySelectorAll('#steps li')];
 const phrasesEl = document.getElementById('phrases');
 const rerender = document.getElementById('rerender');
 const exportBtn = document.getElementById('export');
+const statusEl = document.getElementById('status');
 let job = null;
+
+// style picker lists whatever is in styles/: adding a style needs no UI change
+fetch('/api/styles').then(r => r.json()).then(names => {
+  form.elements.style.replaceChildren(...names.map(n => new Option(n, n, n === 'eclipse', n === 'eclipse')));
+}).catch(() => {});
 
 document.getElementById('back').onclick = () => { ws.hidden = true; landing.hidden = false; };
 
@@ -95,11 +103,17 @@ function openJob(id, name) {
   landing.hidden = true; ws.hidden = false;
   document.getElementById('job-name').textContent = name;
   const es = new EventSource(`/api/jobs/${id}/events`);
+  let loaded = false;
   es.onmessage = ({ data }) => {
-    const { step, status, error } = JSON.parse(data);
+    const { step, status, error, progress } = JSON.parse(data);
     const i = steps.findIndex(li => li.dataset.step === step);
-    steps.forEach((li, k) => { li.className = k < i || status === 'done' ? 'done' : k === i ? 'active' : ''; });
-    if (step === 'compose' && status !== 'running') loadJob();
+    steps.forEach((li, k) => {
+      li.className = k < i || status === 'done' ? 'done' : k === i ? (error ? 'failed' : 'active') : '';
+      li.dataset.label ??= li.textContent;
+      li.textContent = li.dataset.label + (k === i && progress != null ? ` ${progress}%` : '');
+    });
+    statusEl.textContent = error ? `${step} failed: ${error}` : '';
+    if (step === 'render' && !loaded) { loaded = true; loadJob(); } // composition exists from here on
     if (status === 'done' || error) es.close();
     if (status === 'done') { exportBtn.href = `/api/jobs/${id}/output.mp4`; exportBtn.setAttribute('aria-disabled', 'false'); }
   };
@@ -108,6 +122,7 @@ function openJob(id, name) {
 async function loadJob() {
   const data = await (await fetch(`/api/jobs/${job.id}`)).json();
   job.words = data.words;
+  document.querySelector('.preview').style.aspectRatio = `${data.meta.width} / ${data.meta.height}`;
   document.getElementById('preview').src = data.previewUrl;
   renderPhrases(data.phrases);
 }
