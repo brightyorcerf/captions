@@ -1,0 +1,16 @@
+{
+  "name": "eclipse-captions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI caption engine: upload a video, get word-timed animated captions rendered with HyperFrames.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "caption": "node --env-file-if-exists=.env server/cli.js",
+    "test": "node --test 'server/*.test.js'"
+  },
+  "dependencies": {
+    "hyperframes": "0.8.112"
+  }
+}
