@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import http from 'node:http';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { JOBS, ROOT, createJob, listStyles, runJob } from './pipeline.js';
 
 const PORT = Number(process.env.PORT) || 3030;
+const HOST = process.env.HOST || '127.0.0.1'; // local only unless you opt in
 const MAX_UPLOAD = 1024 ** 3; // 1 GB
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm', '.m4v']);
 const TYPES = {
@@ -22,7 +23,7 @@ const send = (res, code, body, type = 'application/json') =>
 // Static files with Range support (the preview <video> needs it to seek)
 async function serveFile(req, res, root, rel, extra = {}) {
   const file = normalize(join(root, rel));
-  if (!file.startsWith(root)) return send(res, 403, { error: 'forbidden' });
+  if (!file.startsWith(root + sep)) return send(res, 403, { error: 'forbidden' });
   const s = await stat(file).catch(() => null);
   if (!s?.isFile()) return send(res, 404, { error: 'not found' });
   const headers = { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': 'no-store', ...extra };
@@ -49,7 +50,7 @@ const start = (job, from) => runJob(job, job.emit, from).catch(err => console.er
 async function readJson(req, limit = 5e6) {
   let body = '';
   for await (const c of req) { body += c; if (body.length > limit) throw new Error('body too large'); }
-  return JSON.parse(body);
+  try { return JSON.parse(body); } catch { throw Object.assign(new Error('invalid json'), { status: 400 }); }
 }
 
 const routes = {
@@ -132,8 +133,8 @@ http.createServer(async (req, res) => {
     return serveFile(req, res, join(ROOT, 'web'), url.pathname === '/' ? 'index.html' : url.pathname);
   } catch (err) {
     console.error(err);
-    if (!res.headersSent) send(res, 500, { error: err.message });
+    if (!res.headersSent) send(res, err.status ?? 500, { error: err.message });
   }
-}).listen(PORT, () => console.log(`eclipse captions → http://localhost:${PORT}`));
+}).listen(PORT, HOST, () => console.log(`eclipse captions → http://localhost:${PORT}`));
 
 await mkdir(JOBS, { recursive: true });
