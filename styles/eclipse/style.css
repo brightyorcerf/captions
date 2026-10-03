@@ -1,13 +1,30 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=block");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Anton&display=block");
 
+/* caption line: sentence case as spoken, soft shadow for legibility on any footage */
 .phrase {
   font-family: "Montserrat", sans-serif;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
-  line-height: 1.15;
+  font-weight: 700;
+  line-height: 1.2;
   color: #fff;
-  /* stroke keeps text legible on bright footage and leaves text-shadow free for the glow */
-  -webkit-text-stroke: 0.06em rgba(0, 0, 0, 0.85);
-  paint-order: stroke fill;
+  text-shadow: 0 0.04em 0.16em rgba(0, 0, 0, 0.55);
 }
+.word { padding: 0 0.1em; border-radius: 0.12em; }
+
+/* keywords inside the line: condensed, uppercase */
+.word.emphasis {
+  font-family: "Anton", sans-serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  font-size: 1.12em;
+  letter-spacing: 0.01em;
+}
+
+/* the big word behind the speaker */
+.callout {
+  font-family: "Anton", sans-serif;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0.02em 0.08em rgba(0, 0, 0, 0.35);
+}
+.callout .word { padding: 0.02em 0.08em 0; border-radius: 0.06em; }
