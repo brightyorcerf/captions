@@ -62,6 +62,18 @@ A style is a folder in `styles/`:
 
 `styles/glido` is a second style in Glido's brand colours. Adding it needed no code changes, and the UI style picker lists whatever folders exist.
 
+## Samples
+
+`samples/input/` holds the source clips and `samples/output/` holds the rendered results, one per style. The landing page lists whatever is in `samples/output/`.
+
+`synthetic-portrait.mp4` is a generated clip: macOS `say` speech over a gradient. It exercises the full render path without real footage.
+
+## Performance
+
+Measured on a 4-core Intel i5-7500 with 8 GB of RAM: rendering runs at about **4x the video's length** (8.8 s clip → 31–37 s). A 3-minute video takes about 12 minutes. Transcription takes a few seconds on top, and runs only once per video thanks to the cache.
+
+Rendering runs in parallel across Chrome workers (`--workers auto`), so more cores means faster renders. HyperFrames' Lambda renderer is the next step for batch work.
+
 ## Security
 
 - API keys live only in `.env`, which is gitignored. `.env.example` documents them. Keys are read server-side and never reach the browser.
