@@ -29,7 +29,7 @@
       <button type="submit" class="go" disabled>Caption</button>
     </form>
 
-    <a class="samples" href="#samples">sample renders ↓</a>
+    <a class="samples" href="#samples" hidden>sample renders ↓</a>
     <p class="hint">10s to 3min · mp4 / mov / webm · keys never leave the server</p>
   </main>
 
@@ -63,6 +63,12 @@
         </div>
       </aside>
     </div>
+  </section>
+
+  <!-- filled from samples/output/ -->
+  <section id="samples" hidden>
+    <h2 class="mono">sample renders</h2>
+    <div class="sample-grid"></div>
   </section>
 
   <script src="app.js" type="module"></script>

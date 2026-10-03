@@ -81,6 +81,21 @@ form.addEventListener('submit', async e => {
   }
 });
 
+// ---------- samples ----------
+fetch('/api/samples').then(r => r.json()).then(files => {
+  if (!files.length) return;
+  document.querySelector('#samples .sample-grid').replaceChildren(...files.map(f => {
+    const fig = document.createElement('figure');
+    const v = Object.assign(document.createElement('video'), { src: `/samples/output/${f}#t=1.2`, controls: true, preload: 'metadata', playsInline: true });
+    const cap = document.createElement('figcaption');
+    cap.textContent = f.replace(/\.mp4$/, '');
+    fig.append(v, cap);
+    return fig;
+  }));
+  document.getElementById('samples').hidden = false;
+  document.querySelector('a.samples').hidden = false;
+}).catch(() => {});
+
 // ---------- workspace ----------
 const landing = document.getElementById('landing');
 const ws = document.getElementById('workspace');
@@ -96,11 +111,12 @@ fetch('/api/styles').then(r => r.json()).then(names => {
   form.elements.style.replaceChildren(...names.map(n => new Option(n, n, n === 'eclipse', n === 'eclipse')));
 }).catch(() => {});
 
-document.getElementById('back').onclick = () => { ws.hidden = true; landing.hidden = false; };
+const samples = document.getElementById('samples');
+document.getElementById('back').onclick = () => { ws.hidden = true; landing.hidden = false; samples.hidden = !samples.querySelector('figure'); };
 
 function openJob(id, name) {
   job = { id, words: [] };
-  landing.hidden = true; ws.hidden = false;
+  landing.hidden = true; ws.hidden = false; samples.hidden = true;
   document.getElementById('job-name').textContent = name;
   const es = new EventSource(`/api/jobs/${id}/events`);
   let loaded = false;

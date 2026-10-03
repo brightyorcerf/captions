@@ -1,7 +1,7 @@
 // Plain node:http server: static UI, job API, SSE progress. No framework needed for six routes.
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import http from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -54,6 +54,9 @@ async function readJson(req, limit = 5e6) {
 
 const routes = {
   'GET /api/styles': async (req, res) => send(res, 200, await listStyles()),
+
+  'GET /api/samples': async (req, res) =>
+    send(res, 200, (await readdir(join(ROOT, 'samples/output')).catch(() => [])).filter(f => f.endsWith('.mp4')).sort()),
 
   // Raw body upload (no multipart parser needed): POST /api/jobs?name=clip.mp4&style=eclipse
   'POST /api/jobs': async (req, res, url) => {
@@ -118,6 +121,7 @@ http.createServer(async (req, res) => {
       return await routes[key](req, res, url, job);
     }
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'not found' });
+    if (url.pathname.startsWith('/samples/')) return serveFile(req, res, join(ROOT, 'samples'), url.pathname.slice(9));
     // composition files for the preview iframe (input video, index.html, captions.js …)
     const jm = /^\/jobs\/([\w-]+)\/([\w.-]+)$/.exec(url.pathname);
     if (jm) return jobs.has(jm[1]) ? serveFile(req, res, join(JOBS, jm[1]), jm[2]) : send(res, 404, { error: 'not found' });

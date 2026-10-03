@@ -79,6 +79,14 @@ select {
 .samples:hover { transform: translateY(-1px); }
 .hint { position: absolute; bottom: 20px; font-family: var(--mono); font-size: 13px; opacity: .75; margin: 0; }
 
+/* ---------- samples ---------- */
+#samples { max-width: 1200px; margin: 0 auto; padding: 48px 16px 80px; }
+#samples h2 { font-size: 15px; font-weight: 500; margin: 0 0 20px; }
+.sample-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.sample-grid figure { margin: 0; background: var(--ink); border-radius: 12px; overflow: hidden; }
+.sample-grid video { width: 100%; display: block; aspect-ratio: 9 / 16; object-fit: contain; background: #000; }
+.sample-grid figcaption { font: 13px var(--mono); padding: 10px 12px; color: var(--green); }
+
 /* ---------- workspace ---------- */
 #workspace { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
 .ws-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
