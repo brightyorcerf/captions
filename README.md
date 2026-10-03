@@ -68,7 +68,18 @@ The brief's suggested variant (1.2x pop, previous word dimmed to 50%) is a two-t
 
 #### Text behind the subject
 
-Matting is the slow step: about 25x realtime on a 4-core CPU at half resolution. So only callout windows are matted (a few seconds per minute of video). The matte is computed at half resolution, and its alpha is then merged onto the full-resolution frames with `ffmpeg alphamerge`, so the speaker stays sharp. Mattes are cached per window, so editing a word re-renders without re-matting. If matting fails, the callout still renders, just in front of the speaker.
+Matting is the slowest step, so it is kept small:
+
+- **Only callout windows** are matted, which is a few seconds per minute of video.
+- **All windows go through one model run.** The u2net model takes about 15 s just to start, so each callout does not pay that again.
+- It runs at **half resolution and 15 fps**. Its alpha is then merged onto the full-resolution 30 fps frames with `ffmpeg alphamerge`, so the speaker stays sharp. Edges can lag the head by up to 1/30 s, which is not noticeable behind a word.
+- The result is **cached per window**, so editing a word re-renders without re-matting.
+
+On a 4-core i5, one 2.7 s callout takes about 41 s and two take about 61 s. If matting fails, the callout still renders, just in front of the speaker.
+
+### Hinglish
+
+Scribe may return Hindi speech in Devanagari script. Hinglish reels, the reference included, are captioned in Latin script. When Devanagari appears, `server/romanize.js` transliterates it in the creator spelling style (मैंने → *maine*, मंगवाया → *mangwaya*, वालों → *walon*). It uses a dictionary for common words and rule-based schwa deletion for the rest, and it has tests.
 
 ## Styles are data
 
@@ -87,7 +98,7 @@ A style is a folder in `styles/`:
 
 ## Performance
 
-Measured on a 4-core Intel i5-7500 with 8 GB of RAM: rendering runs at about **4x the video's length** (8.8 s clip → 31–37 s). A 3-minute video takes about 12 minutes. Transcription takes a few seconds on top, and runs only once per video thanks to the cache.
+Measured on a 4-core Intel i5-7500 with 8 GB of RAM: rendering runs at about **4x the video's length** (8.8 s clip → 31–37 s). A 3-minute video takes about 12 minutes. Transcription takes a few seconds on top, and runs only once per video thanks to the cache. Matting adds about 15 s per second of callout (see above).
 
 Rendering runs in parallel across Chrome workers (`--workers auto`), so more cores means faster renders. HyperFrames' Lambda renderer is the next step for batch work.
 
@@ -95,7 +106,10 @@ Rendering runs in parallel across Chrome workers (`--workers auto`), so more cor
 
 - API keys live only in `.env`, which is gitignored. `.env.example` documents them. Keys are read server-side and never reach the browser.
 - Uploads are limited by extension and size (1 GB), then validated with `ffprobe` (must have a video stream, ≤ 10 min).
-- Transcript edits can change word text only. Timings stay server-owned. Style names are checked against the `styles/` folder.
+- Transcript edits can change word text and role only. Timings stay server-owned. Style names are checked against the `styles/` folder.
+- The server binds to `127.0.0.1` by default. Set `HOST` to expose it on a network.
+- Uploads are re-encoded to H.264 with 1 s keyframes before rendering. Phone HEVC and sparse-keyframe files otherwise freeze or fail to preview.
+- Generated compositions pass `hyperframes lint` with 0 errors and 0 warnings.
 
 ## Decisions & trade-offs
 
