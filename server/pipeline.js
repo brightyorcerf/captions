@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { chunk } from './chunk.js';
 import { assignRoles } from './roles.js';
+import { hasDevanagari, romanizeWords } from './romanize.js';
 import { transcribe } from './transcribe.js';
 
 const run = promisify(execFile);
@@ -59,8 +60,10 @@ const json = v => JSON.stringify(v).replace(/</g, '\\u003c'); // safe inside <sc
 
 async function compose(job) {
   const { dir, meta, style, words, phrases, input, mattes = [] } = job;
-  await copyFile(join(ROOT, 'runtime/captions.js'), join(dir, 'captions.js'));
+  // inlined (not linked) so the renderer's lint sees the timeline registration
+  const runtime = await readFile(join(ROOT, 'runtime/captions.js'), 'utf8');
   await copyFile(join(ROOT, 'runtime/captions.css'), join(dir, 'captions.css'));
+  await copyFile(join(ROOT, 'runtime/preview.js'), join(dir, 'preview.js'));
   await copyFile(join(ROOT, 'styles', job.styleName, 'style.css'), join(dir, 'style.css'));
   const { width: W, height: H, duration: D } = meta;
   await writeFile(join(dir, 'index.html'), `<!doctype html>
@@ -76,11 +79,14 @@ async function compose(job) {
   <div id="root" data-composition-id="main" data-start="0" data-duration="${D}" data-width="${W}" data-height="${H}">
     <video id="source" class="clip" data-start="0" data-duration="${D}" data-track-index="0" data-has-audio="true" src="${input}" playsinline></video>
     <div id="callouts"></div>
-${mattes.map(m => `    <video class="clip subject" data-start="${m.start}" data-duration="${m.duration}" data-track-index="1" src="${m.src}" muted playsinline></video>`).join('\n')}
+${mattes.map((m, k) => `    <video id="subject-${k}" class="clip subject" data-start="${m.start}" data-duration="${m.duration}" data-track-index="1" src="${m.src}" muted playsinline></video>`).join('\n')}
     <div id="captions" style="--y: ${style.position[orientation(meta)]}; --font-scale: ${style.fontScale}"></div>
   </div>
   <script type="application/json" id="captions-data">${json({ words, phrases, style, mattes, duration: D })}</script>
-  <script src="captions.js"></script>
+  <script>
+${runtime}
+  </script>
+  <script src="preview.js"></script>
 </body>
 </html>
 `);
@@ -103,38 +109,50 @@ async function headTop(file) {
 }
 
 /**
- * Text-behind-subject: for every phrase holding a callout, cut the speaker out of the frame so the
- * big word can sit between the background and the person. Only those windows are matted (it is the
- * slow step), at half resolution; the mask is then applied to full-resolution frames so the person stays sharp.
+ * Text-behind-subject: for every callout window, cut the speaker out of the frame so the big word
+ * can sit between the background and the person. Matting is the slow step, so: only callout windows,
+ * all of them in ONE model run (model start-up is ~15s), at half resolution and 15 fps. The mask is
+ * then applied to full-resolution frames so the person stays sharp. Results are cached per window.
  */
+const MATTE_FPS = 15;
 async function matte(job) {
   job.mattes = [];
   if (!job.style.callout?.behindSubject) return;
   const { dir, meta } = job;
-  for (const [n, p] of job.phrases.entries()) {
-    if (!p.callout) continue;
-    const start = +p.callout.start.toFixed(3), duration = +(p.callout.end - p.callout.start).toFixed(3);
-    const src = `subject-${start}-${duration}.webm`;
-    const out = join(dir, src);
-    if (!(await exists(out))) {
-      const half = join(dir, `.half-${n}.mp4`), mask = join(dir, `.mask-${n}.webm`);
-      try {
-        await run('ffmpeg', ['-y', '-v', 'error', '-ss', `${start}`, '-i', join(dir, job.input), '-t', `${duration}`,
-          '-vf', 'scale=-2:960', '-an', '-c:v', 'libx264', '-preset', 'veryfast', half]);
-        await hf('remove-background', half, '-o', mask, '--quality', 'fast');
-        await run('ffmpeg', ['-y', '-v', 'error', '-ss', `${start}`, '-i', join(dir, job.input), '-t', `${duration}`,
-          '-c:v', 'libvpx-vp9', '-i', mask, '-filter_complex',
+  const q = t => Math.round(t * MATTE_FPS) / MATTE_FPS; // snap to the matte frame grid so offsets are exact
+  const wins = job.phrases.flatMap((p, phrase) => {
+    if (!p.callout) return [];
+    const start = q(p.callout.start), duration = Math.max(q(p.callout.end) - start, 1 / MATTE_FPS);
+    return [{ phrase, start, duration, src: `subject-${start.toFixed(3)}-${duration.toFixed(3)}.webm` }];
+  });
+  const todo = [];
+  for (const w of wins) if (!(await exists(join(dir, w.src)))) todo.push(w);
+
+  if (todo.length) {
+    const strip = join(dir, '.matte-in.mp4'), mask = join(dir, '.matte-mask.webm');
+    const select = todo.map(w => `between(t,${w.start},${(w.start + w.duration - 0.001).toFixed(3)})`).join('+');
+    try {
+      await run('ffmpeg', ['-y', '-v', 'error', '-i', join(dir, job.input), '-an', '-vf',
+        `fps=${MATTE_FPS},select='${select}',setpts=N/(${MATTE_FPS}*TB),scale=-2:960`, '-c:v', 'libx264', '-preset', 'veryfast', strip]);
+      await hf('remove-background', strip, '-o', mask, '--quality', 'fast');
+      let offset = 0;
+      for (const w of todo) {
+        await run('ffmpeg', ['-y', '-v', 'error', '-ss', `${w.start}`, '-t', `${w.duration}`, '-i', join(dir, job.input),
+          '-ss', `${offset}`, '-t', `${w.duration}`, '-c:v', 'libvpx-vp9', '-i', mask, '-filter_complex',
           `[1:v]alphaextract,scale=${meta.width}:${meta.height}[a];[0:v]scale=${meta.width}:${meta.height}[v];[v][a]alphamerge,format=yuva420p`,
-          '-an', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '0', '-crf', '32', '-auto-alt-ref', '0', out]);
-      } catch (err) {
-        // ponytail: no matte -> callout simply renders in front of the speaker
-        console.warn(`[matte] phrase ${n} skipped: ${err.message.split('\n')[0]}`);
-        continue;
-      } finally {
-        await rm(half, { force: true }); await rm(mask, { force: true });
+          '-an', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '0', '-crf', '32', '-auto-alt-ref', '0',
+          join(dir, w.src)]);
+        offset += w.duration;
       }
+    } catch (err) {
+      // ponytail: no matte -> callouts simply render in front of the speaker
+      console.warn(`[matte] skipped: ${err.message.split('\n')[0]}`);
+    } finally {
+      await rm(strip, { force: true }); await rm(mask, { force: true });
     }
-    job.mattes.push({ phrase: n, src, start, duration, headTop: await headTop(out) });
+  }
+  for (const w of wins) {
+    if (await exists(join(dir, w.src))) job.mattes.push({ ...w, headTop: await headTop(join(dir, w.src)) });
   }
 }
 
@@ -177,6 +195,11 @@ export async function runJob(job, emit = () => {}, from = 'audio') {
       if (step === 'audio') {
         job.meta = await probe(join(job.dir, job.input));
         await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', join(job.dir, 'audio.mp3')]);
+        // normalise once: H.264 with a keyframe every second seeks frame-accurately in the renderer and
+        // plays in every browser preview (phone HEVC / sparse-keyframe uploads otherwise freeze)
+        await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+          '-pix_fmt', 'yuv420p', '-g', '30', '-keyint_min', '30', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', join(job.dir, 'source.mp4')]);
+        job.input = 'source.mp4';
       }
       if (step === 'transcribe') {
         // cache by content hash: same video never pays for transcription twice
@@ -189,6 +212,8 @@ export async function runJob(job, emit = () => {}, from = 'audio') {
         }
         if (!t.words.length) throw new Error('no speech found in this video');
         job.words = t.words;
+        // Hindi may come back in Devanagari; Hinglish reels are captioned in Latin script
+        if (job.words.some(w => hasDevanagari(w.text))) romanizeWords(job.words);
         job.language = t.language;
       }
       if (step === 'chunk') {
