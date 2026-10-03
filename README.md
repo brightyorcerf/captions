@@ -4,9 +4,10 @@ Upload a talking-head video, get word-timed, animated **Eclipse** captions back 
 Built for Glido Labs' round-2 take-home.
 
 ```
-upload ─▶ ffmpeg (audio) ─▶ Scribe / Whisper ─▶ chunker ─▶ HyperFrames composition ─▶ MP4
-                              word timestamps    3–5 word     HTML + GSAP timeline
-                                                 phrases      (same file previews in the browser)
+upload ─▶ ffmpeg ─▶ Scribe / Whisper ─▶ chunk + roles ─▶ matte ─▶ HyperFrames composition ─▶ MP4
+          (audio)   word timestamps     3–4 word lines   speaker   HTML + GSAP timeline
+                                        keywords,        cut-out   (same file previews
+                                        callouts         per callout in the browser)
 ```
 
 ## Quick start
@@ -25,7 +26,7 @@ npm run caption -- samples/input/*.mp4 --style eclipse --out out/
 npm run caption -- talk.mp4 --style glido --language hi --keyterms "Glido,FramesNFlights"
 ```
 
-Tests: `npm test`. These cover the chunker: 10-second, fast-talker and 3-minute transcripts, pauses, and orphan words.
+Tests: `npm test`. They cover the chunker (10-second, fast-talker and 3-minute transcripts, pauses, orphans, callout-aware limits) and keyword picking (Hinglish stopwords, callout spacing).
 
 ## How it works
 
@@ -35,6 +36,8 @@ Tests: `npm test`. These cover the chunker: 10-second, fast-talker and 3-minute 
 | Audio | `server/pipeline.js` | `ffprobe` reads size, duration and phone rotation. `ffmpeg` extracts 16 kHz mono audio, about 10x smaller than the video. |
 | Transcribe | `server/transcribe.js` | Adapters normalise ElevenLabs Scribe v2 and OpenAI Whisper to `{text,start,end}[]`. Results are cached by content hash. |
 | Chunk | `server/chunk.js` | Pure function, unit-tested. See below. |
+| Roles | `server/roles.js` | Picks keyword and callout words. Pure function, unit-tested. The editor can override every pick. |
+| Matte | `server/pipeline.js` | Cuts the speaker out, but only during callout windows, using `hyperframes remove-background`. Cached. |
 | Compose | `server/pipeline.js` | Writes a HyperFrames project: source `<video>` + caption layer + JSON data + style. |
 | Animate | `runtime/captions.js` | Builds one paused GSAP timeline from timestamps. The renderer seeks it frame by frame. |
 | Render | `hyperframes render` | Headless Chrome + FFmpeg. Deterministic output. |
@@ -49,20 +52,23 @@ Every boundary comes from the transcript JSON. There are no frame numbers anywhe
 4. Rebalance orphans after a soft break: `[5][1]` becomes `[3][3]`, or the two are merged if they fit.
 5. A phrase shows from its first word to `last word end + hold`, but is always cleared before the next phrase starts.
 
-### The Eclipse spec
+### The Eclipse style
 
-No reference video came with the brief, so Eclipse is defined from the written spec. The name sets the metaphor: one word catches the light while the rest of the phrase sits in shadow. Every value is a token in `styles/eclipse/style.json`, so matching a reference later means editing JSON, not code.
+Measured from the reference video (`reference/`, not committed). The name comes from its signature move: **a giant keyword sits behind the speaker, and their head eclipses it.**
 
-| Property | Value | Token |
-|---|---|---|
-| Typography | Montserrat 800, uppercase, thin dark stroke for legibility | `style.css` |
-| Size | 8.5% of the short edge (about 92 px at 1080×1920) | `fontScale` |
-| Placement | 70% down on portrait, 80% on landscape, which stays clear of reel UI | `position` |
-| Phrase | 3–5 words, up to 2 balanced lines | `chunk`, `maxLines` |
-| Active word | scales to **1.2x**, turns neon lime `#b6ff3b` with a two-layer glow | `motion.activeScale`, `colors`, `glow` |
-| Previous word | eases back to **1.0x** at **50%** opacity | `motion.dimOpacity` |
-| Upcoming words | wait in shadow at 50% opacity | `motion.dimOpacity` |
-| Timing | pop 140 ms `back.out`, phrase in 180 ms, out 120 ms, cleared before the next phrase | `motion` |
+| Element | Reference behaviour | How it's built | Token |
+|---|---|---|---|
+| Caption line | Montserrat bold, sentence case as spoken, soft shadow, 3–4 words on one line, about 76% down | `chunk()` with `maxLines: 1`; `maxChars` derived from width | `fontScale`, `charWidth`, `position`, `chunk` |
+| Active word | turns yellow `#FAE600` with a translucent yellow box, very slight pop | GSAP tween at `word.start`: colour, `backgroundColor`, `scale` | `colors.active`, `highlight`, `motion.activeScale` |
+| Spoken / upcoming words | stay white, full opacity | tween back at the next word's start | `colors.text`, `motion.dimOpacity: 1` |
+| Keywords | condensed Anton uppercase inside the line (MANGWAYA, LAZULI) | `role: 'emphasis'` from `roles.js` | `roles.emphasisMin` |
+| Callout | one word per beat, shown huge at the top, fitted to about 89% width, **behind the speaker's head**. White → yellow + box while spoken → white. Outlives its phrase. | `role: 'callout'`. The speaker is matted for that window only. The callout is placed from the matte's head line and layered video → callout → cut-out → captions. | `callout.*`, `roles.callout*` |
+
+The brief's suggested variant (1.2x pop, previous word dimmed to 50%) is a two-token change: `motion.activeScale: 1.2`, `motion.dimOpacity: 0.5`.
+
+#### Text behind the subject
+
+Matting is the slow step: about 25x realtime on a 4-core CPU at half resolution. So only callout windows are matted (a few seconds per minute of video). The matte is computed at half resolution, and its alpha is then merged onto the full-resolution frames with `ffmpeg alphamerge`, so the speaker stays sharp. Mattes are cached per window, so editing a word re-renders without re-matting. If matting fails, the callout still renders, just in front of the speaker.
 
 ## Styles are data
 
