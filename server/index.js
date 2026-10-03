@@ -13,7 +13,7 @@ const MAX_UPLOAD = 1024 ** 3; // 1 GB
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm', '.m4v']);
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
 };
 const jobs = new Map(); // ponytail: in-memory, single process; a restart forgets jobs (files stay on disk)
 
@@ -37,12 +37,6 @@ async function serveFile(req, res, root, rel, extra = {}) {
   }
   res.writeHead(200, { ...headers, 'content-length': s.size });
   createReadStream(file).pipe(res);
-}
-
-function track(job) {
-  job.listeners = new Set();
-  jobs.set(job.id, job);
-  return e => { for (const res of job.listeners) res.write(`data: ${JSON.stringify(e)}\n\n`); };
 }
 
 const start = (job, from) => runJob(job, job.emit, from).catch(err => console.error(`[job ${job.id}]`, err.message));
@@ -79,7 +73,9 @@ const routes = {
       await rm(job.dir, { recursive: true, force: true });
       return send(res, 413, { error: err.message });
     }
-    job.emit = track(job);
+    job.listeners = new Set();
+    job.emit = e => { for (const r of job.listeners) r.write(`data: ${JSON.stringify(e)}\n\n`); };
+    jobs.set(id, job);
     start(job);
     send(res, 201, { id });
   },

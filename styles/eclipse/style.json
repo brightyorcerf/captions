@@ -1,5 +1,4 @@
 {
-  "name": "Eclipse",
   "fontScale": 0.071,
   "charWidth": 0.56,
   "maxLines": 1,
@@ -9,5 +8,5 @@
   "colors": { "text": "#ffffff", "active": "#fae600" },
   "highlight": { "on": "rgba(250,230,0,0.30)", "off": "rgba(250,230,0,0)" },
   "motion": { "activeScale": 1.05, "dimOpacity": 1, "pop": 0.08, "in": 0.1, "out": 0.08 },
-  "callout": { "behindSubject": true, "width": 0.89, "charWidth": 0.47, "maxSize": 0.24, "fallbackY": 0.2, "headOverlap": 0.35, "hold": 1.2 }
+  "callout": { "width": 0.89, "charWidth": 0.47, "maxSize": 0.24, "fallbackY": 0.2, "headOverlap": 0.35, "hold": 1.2 }
 }

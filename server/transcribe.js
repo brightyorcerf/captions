@@ -44,7 +44,7 @@ const providers = {
   },
 };
 
-export function pickProvider(name = process.env.TRANSCRIBE_PROVIDER) {
+function pickProvider(name = process.env.TRANSCRIBE_PROVIDER) {
   if (name) {
     if (!providers[name]) throw new Error(`unknown provider "${name}", use: ${Object.keys(providers).join(', ')}`);
     return name;
@@ -54,4 +54,4 @@ export function pickProvider(name = process.env.TRANSCRIBE_PROVIDER) {
   throw new Error('no transcription key: set ELEVENLABS_API_KEY or OPENAI_API_KEY in .env');
 }
 
-export const transcribe = (file, opts = {}) => providers[pickProvider(opts.provider)](file, opts);
+export const transcribe = (file, opts = {}) => providers[pickProvider()](file, opts);

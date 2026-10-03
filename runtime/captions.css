@@ -12,7 +12,7 @@ html, body { width: 100vw; height: 100vh; overflow: hidden; background: #000; }
   text-wrap: balance;
 }
 .phrase { position: absolute; left: 0; right: 0; top: 0; visibility: hidden; } /* centred by GSAP yPercent */
-.word { display: inline-block; transform-origin: 50% 70%; padding: 0 0.04em; }
+.word { display: inline-block; transform-origin: 50% 70%; }
 /* layer order: source video < callout text < cut-out speaker < caption line */
 #callouts { position: absolute; inset: 0; z-index: 1; }
 .callout { position: absolute; left: 0; right: 0; text-align: center; white-space: nowrap; visibility: hidden; }

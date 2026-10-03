@@ -20,7 +20,7 @@ function score(words, i) {
   return b.length + (capital ? 3 : 0) + (/[.!?]$/.test(t) ? 1 : 0);
 }
 
-export const ROLE_DEFAULTS = { calloutMin: 8, calloutGap: 6, emphasisMin: 7 };
+const ROLE_DEFAULTS = { calloutMin: 8, calloutGap: 6, emphasisMin: 7 };
 
 /**
  * Mutates words: sets word.role = 'callout' | 'emphasis' (or deletes it).

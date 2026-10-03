@@ -1,7 +1,6 @@
 // upload → audio → transcribe → chunk → compose → render. Shared by the HTTP server and the CLI.
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +15,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const JOBS = join(ROOT, 'jobs');
 const CACHE = join(JOBS, '.cache');
 const MAX_SECONDS = 600;
-export const STEPS = ['audio', 'transcribe', 'chunk', 'matte', 'compose', 'render'];
+const STEPS = ['audio', 'transcribe', 'chunk', 'matte', 'compose', 'render'];
 
 export const listStyles = async () =>
   (await readdir(join(ROOT, 'styles'), { withFileTypes: true })).filter(d => d.isDirectory()).map(d => d.name);
@@ -39,10 +38,7 @@ async function probe(file) {
   return { width, height, duration };
 }
 
-const sha256 = file => new Promise((ok, fail) => {
-  const h = createHash('sha256');
-  createReadStream(file).on('data', d => h.update(d)).on('end', () => ok(h.digest('hex'))).on('error', fail);
-});
+const sha256 = async file => createHash('sha256').update(await readFile(file)).digest('hex');
 
 /** Layout-dependent chunk limits: how many characters fit on the configured number of lines. */
 export function chunkOptions(style, { width, height }) {
@@ -93,8 +89,10 @@ ${runtime}
 }
 
 const exists = f => access(f).then(() => true, () => false);
-const hf = (...args) => run(join(ROOT, 'node_modules/.bin/hyperframes'), args,
-  { env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: '1' }, maxBuffer: 1 << 26 });
+const HF_BIN = join(ROOT, 'node_modules/.bin/hyperframes');
+const HF_ENV = { ...process.env, HYPERFRAMES_SKIP_SKILLS: '1' };
+const hf = (...args) => run(HF_BIN, args,
+  { env: HF_ENV, maxBuffer: 1 << 26 });
 
 /** Fraction of frame height where the subject's head starts, read from the matte's first frame. */
 async function headTop(file) {
@@ -117,7 +115,7 @@ async function headTop(file) {
 const MATTE_FPS = 15;
 async function matte(job) {
   job.mattes = [];
-  if (!job.style.callout?.behindSubject) return;
+  if (!job.style.callout) return;
   const { dir, meta } = job;
   const q = t => Math.round(t * MATTE_FPS) / MATTE_FPS; // snap to the matte frame grid so offsets are exact
   const wins = job.phrases.flatMap((p, phrase) => {
@@ -157,11 +155,8 @@ async function matte(job) {
 }
 
 function render(job, emit) {
-  const bin = join(ROOT, 'node_modules/.bin/hyperframes');
   return new Promise((ok, fail) => {
-    const p = spawn(bin, ['render', job.dir, '-o', join(job.dir, 'output.mp4'), '--quality', 'delivery'], {
-      env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: '1' },
-    });
+    const p = spawn(HF_BIN, ['render', job.dir, '-o', join(job.dir, 'output.mp4'), '--quality', 'delivery'], { env: HF_ENV });
     let log = '';
     const onData = d => {
       log = (log + d).slice(-4000);
