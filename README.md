@@ -49,9 +49,20 @@ Every boundary comes from the transcript JSON. There are no frame numbers anywhe
 4. Rebalance orphans after a soft break: `[5][1]` becomes `[3][3]`, or the two are merged if they fit.
 5. A phrase shows from its first word to `last word end + hold`, but is always cleared before the next phrase starts.
 
-### The Eclipse pop
+### The Eclipse spec
 
-For each word at `word.start`: it scales to **1.2x**, turns the neon colour and gains the glow. At the same instant the previous word eases back to **1.0x** at **50%** opacity. Phrases scale and fade in at their first word and fade out before the next phrase.
+No reference video came with the brief, so Eclipse is defined from the written spec. The name sets the metaphor: one word catches the light while the rest of the phrase sits in shadow. Every value is a token in `styles/eclipse/style.json`, so matching a reference later means editing JSON, not code.
+
+| Property | Value | Token |
+|---|---|---|
+| Typography | Montserrat 800, uppercase, thin dark stroke for legibility | `style.css` |
+| Size | 8.5% of the short edge (about 92 px at 1080×1920) | `fontScale` |
+| Placement | 70% down on portrait, 80% on landscape, which stays clear of reel UI | `position` |
+| Phrase | 3–5 words, up to 2 balanced lines | `chunk`, `maxLines` |
+| Active word | scales to **1.2x**, turns neon lime `#b6ff3b` with a two-layer glow | `motion.activeScale`, `colors`, `glow` |
+| Previous word | eases back to **1.0x** at **50%** opacity | `motion.dimOpacity` |
+| Upcoming words | wait in shadow at 50% opacity | `motion.dimOpacity` |
+| Timing | pop 140 ms `back.out`, phrase in 180 ms, out 120 ms, cleared before the next phrase | `motion` |
 
 ## Styles are data
 
