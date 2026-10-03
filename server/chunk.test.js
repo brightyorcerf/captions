@@ -79,3 +79,9 @@ test('long silence clears the screen', () => {
   const [a, b] = chunk(w);
   assert.ok(a.end < 1 && b.start === 5);
 });
+
+test('free words (callouts) do not count toward the line limit', () => {
+  const w = speak('Obsidian aur lapis lazuli');
+  assert.equal(chunk(w, { maxWords: 3 }).length, 2);
+  assert.deepEqual(chunk(w, { maxWords: 3, free: i => i === 0 }).map(p => p.wordIdx), [[0, 1, 2, 3]]);
+});

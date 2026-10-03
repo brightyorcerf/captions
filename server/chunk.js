@@ -28,13 +28,14 @@ export function chunk(words, opts = {}) {
         w.start - prev.end > o.maxGap ||                       // speaker paused
         /[.!?…]["')\]]*$/.test(prev.text) ||                     // sentence ended
         (/[,;:—–]["')\]]*$/.test(prev.text) && cur.length >= o.minWords); // clause ended
-      const ws = [...cur, i].map(k => words[k]);
-      const full = cur.length >= o.maxWords || textLen(ws) > o.maxChars;
+      // words shown elsewhere (e.g. an Eclipse callout) don't take up room on the caption line
+      const line = [...cur, i].filter(k => !o.free?.(k));
+      const full = line.length > o.maxWords || textLen(line.map(k => words[k])) > o.maxChars;
 
       if (hard) push(false);
       else if (full) {
         // don't strand "the"/"of" at the end of a line: carry it into the next phrase
-        const carry = cur.length > 1 && WEAK.has(bare(words[cur.at(-1)].text)) ? [cur.pop()] : [];
+        const carry = cur.length > 1 && WEAK.has(bare(words[cur.at(-1)].text)) && !o.free?.(cur.at(-1)) ? [cur.pop()] : [];
         push(true);
         cur = carry;
       }
@@ -48,7 +49,8 @@ export function chunk(words, opts = {}) {
     const a = groups[g - 1], b = groups[g];
     if (!a.soft || b.idx.length >= o.minWords) continue;
     const all = [...a.idx, ...b.idx];
-    if (all.length <= o.maxWords && textLen(all.map(k => words[k])) <= o.maxChars) {
+    const line = all.filter(k => !o.free?.(k));
+    if (line.length <= o.maxWords && textLen(line.map(k => words[k])) <= o.maxChars) {
       a.idx = all; a.soft = b.soft; groups.splice(g--, 1);
     } else {
       const cut = Math.ceil(all.length / 2);
