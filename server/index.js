@@ -99,9 +99,13 @@ const routes = {
   'PUT /api/jobs/:id/transcript': async (req, res, url, job) => {
     if (job.state?.status === 'running') return send(res, 409, { error: 'job is still running' });
     const { words } = await readJson(req);
-    if (!Array.isArray(words) || words.length !== job.words?.length || words.some(w => typeof w?.text !== 'string' || !w.text.trim()))
-      return send(res, 400, { error: 'words must match the original transcript, one non-empty text per word' });
-    words.forEach((w, i) => { job.words[i].text = w.text.trim().slice(0, 60); }); // timings stay server-owned
+    if (!Array.isArray(words) || words.length !== job.words?.length || words.some(w => typeof w?.text !== 'string' || !w.text.trim())
+      || words.some(w => w.role != null && !['emphasis', 'callout'].includes(w.role)))
+      return send(res, 400, { error: 'words must match the original transcript: non-empty text, role emphasis|callout or none' });
+    words.forEach((w, i) => { // timings stay server-owned
+      job.words[i].text = w.text.trim().slice(0, 60);
+      if (w.role) job.words[i].role = w.role; else delete job.words[i].role;
+    });
     start(job, 'chunk');
     send(res, 202, { ok: true });
   },

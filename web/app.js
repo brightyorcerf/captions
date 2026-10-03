@@ -143,6 +143,8 @@ async function loadJob() {
   renderPhrases(data.phrases);
 }
 
+const ROLES = [null, 'emphasis', 'callout'];
+
 function renderPhrases(phrases) {
   phrasesEl.replaceChildren(...phrases.map(p => {
     const div = document.createElement('div');
@@ -150,7 +152,14 @@ function renderPhrases(phrases) {
     div.innerHTML = `<span class="t">${p.start.toFixed(2)}s – ${p.end.toFixed(2)}s</span>`;
     for (const wi of p.wordIdx) {
       const b = document.createElement('button');
-      b.className = 'word'; b.textContent = job.words[wi].text;
+      b.className = `word ${job.words[wi].role ?? ''}`; b.textContent = job.words[wi].text;
+      b.oncontextmenu = e => {
+        e.preventDefault();
+        const w = job.words[wi];
+        w.role = ROLES[(ROLES.indexOf(w.role ?? null) + 1) % ROLES.length] ?? undefined;
+        b.className = `word ${w.role ?? ''}`;
+        rerender.disabled = false;
+      };
       b.onclick = () => {
         if (b.isContentEditable) return;
         b.contentEditable = 'true'; b.focus();
@@ -176,7 +185,7 @@ rerender.onclick = async () => {
   rerender.disabled = true;
   exportBtn.setAttribute('aria-disabled', 'true');
   await fetch(`/api/jobs/${job.id}/transcript`, {
-    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ words: job.words }),
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ words: job.words.map(({ text, role }) => ({ text, role })) }),
   });
   openJob(job.id, document.getElementById('job-name').textContent);
 };

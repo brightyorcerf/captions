@@ -45,6 +45,7 @@
       <li data-step="audio">extract audio</li>
       <li data-step="transcribe">transcribe</li>
       <li data-step="chunk">chunk</li>
+      <li data-step="matte">cut out speaker</li>
       <li data-step="compose">compose</li>
       <li data-step="render">render</li>
     </ol>
@@ -55,7 +56,7 @@
       </div>
       <aside class="transcript">
         <h2 class="mono">transcript</h2>
-        <p class="hint-dark">Click a word to fix it. Re-render costs no API call.</p>
+        <p class="hint-dark">Click a word to fix it. Right-click to cycle normal → <b>KEYWORD</b> → <b>CALLOUT</b>. Re-render costs no API call.</p>
         <div id="phrases"></div>
         <div class="actions">
           <button class="ghost" id="rerender" disabled>Re-render preview</button>

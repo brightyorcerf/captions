@@ -116,6 +116,8 @@ select {
 .phrase .t { font-family: var(--mono); font-size: 11px; color: #888; width: 100%; }
 .word { border: 0; background: none; font: 500 15px var(--sans); padding: 2px 4px; border-radius: 4px; cursor: text; color: var(--ink); }
 .word:hover, .word:focus { background: rgb(52 195 117 / .2); outline: none; }
+.word.emphasis { text-transform: uppercase; font-weight: 700; letter-spacing: .02em; }
+.word.callout { text-transform: uppercase; font-weight: 700; background: var(--ink); color: var(--green); }
 .word[contenteditable="true"] { background: var(--green); color: var(--white); }
 .actions { display: flex; gap: 8px; margin-top: 16px; }
 .actions > * { flex: 1; text-align: center; }
