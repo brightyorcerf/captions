@@ -135,14 +135,21 @@ function renderPhrases(phrases) {
     for (const wi of p.wordIdx) {
       const b = document.createElement('button');
       b.className = 'word'; b.textContent = job.words[wi].text;
-      b.onclick = () => { b.contentEditable = 'true'; b.focus(); };
+      b.onclick = () => {
+        if (b.isContentEditable) return;
+        b.contentEditable = 'true'; b.focus();
+        getSelection().selectAllChildren(b); // typing replaces the word
+      };
       b.onblur = () => {
         b.contentEditable = 'false';
         const t = b.textContent.trim();
         if (t && t !== job.words[wi].text) { job.words[wi].text = t; rerender.disabled = false; }
         else b.textContent = job.words[wi].text;
       };
-      b.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); b.blur(); } };
+      b.onkeydown = e => {
+        if (e.key === 'Enter') { e.preventDefault(); b.blur(); }
+        if (e.key === 'Escape') { b.textContent = job.words[wi].text; b.blur(); }
+      };
       div.append(b);
     }
     return div;

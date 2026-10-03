@@ -37,7 +37,7 @@ main, section { position: relative; z-index: 1; }
   letter-spacing: .02em;
   text-shadow: .045em .045em 0 var(--ink); /* the black hint */
 }
-.tagline { font-size: clamp(17px, 2vw, 24px); line-height: 1.45; margin: 0 0 40px; opacity: .95; }
+.tagline { font-size: clamp(17px, 2vw, 24px); line-height: 1.45; margin: 0 0 40px; opacity: .95; text-wrap: balance; }
 
 .bar {
   display: flex; align-items: center; gap: 8px;
@@ -119,6 +119,7 @@ select {
   .transcript { max-height: none; }
 }
 @media (max-width: 560px) {
+  .tagline br { display: none; }
   .bar { flex-wrap: wrap; }
   .drop { flex-basis: 100%; }
   select, .bar .go { flex: 1; }
