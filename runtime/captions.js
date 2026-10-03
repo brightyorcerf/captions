@@ -38,17 +38,18 @@ phrases.forEach((p, n) => {
     const el = calloutLayer.appendChild(document.createElement('div'));
     el.className = 'callout';
     spans.set(calloutIdx, wordEl(el, calloutIdx));
-    // fit the word to the frame width; sit it on the speaker's head so the head eclipses its lower part
+    // sit it on the speaker's head so the head eclipses its lower part
     const chars = words[calloutIdx].text.length;
-    const vw = Math.min((co.width * 100) / (chars * co.charWidth), co.maxSize * 100);
+    // fit the word to the frame width, capped by the short edge so landscape doesn't get giant words
+    const fit = (co.width * 100) / (chars * co.charWidth);
     const head = mattes.find(x => x.phrase === n)?.headTop;
-    el.style.fontSize = `${vw}vw`;
-    el.style.top = head == null ? `${co.fallbackY * 100}%` : `calc(${head * 100}% + ${co.headOverlap * vw}vw)`;
+    el.style.fontSize = `min(${fit}vw, ${co.maxSize * 100}vmin)`;
+    el.style.top = head == null ? `${co.fallbackY * 100}%` : `calc(${head * 100}% + ${co.headOverlap}em)`;
     gsap.set(el, { yPercent: -100 });
     blocks.push([el, p.callout.end]);
   }
 
-  gsap.set([...spans.values()], { ...off, marginLeft: '0em', marginRight: '0em' });
+  gsap.set([...spans.values()], off);
 
   for (const [el, end] of blocks) {
     const y = gsap.getProperty(el, 'yPercent');
@@ -57,15 +58,14 @@ phrases.forEach((p, n) => {
     tl.to(el, { autoAlpha: 0, duration: m.out, ease: 'power1.in' }, Math.max(p.start + m.in, end - m.out));
   }
 
-  // the pop: current word lights up, previous word settles back. margins grow with the
-  // scale so a popped word pushes its neighbours aside instead of overlapping them.
+  // the pop: current word lights up, previous word settles back. transforms/colour only
+  // (no layout properties) so seek-by-frame capture never stutters; word padding absorbs the scale.
   p.wordIdx.forEach((i, k) => {
     const s = spans.get(i);
-    const room = `${(s.textContent.length * style.charWidth * (m.activeScale - 1)) / 2}em`;
-    tl.to(s, { ...on, marginLeft: room, marginRight: room, duration: m.pop, ease: 'back.out(3)' }, words[i].start);
+    tl.to(s, { ...on, duration: m.pop, ease: 'back.out(3)' }, words[i].start);
     // settle when the next word starts; a callout outlives its phrase, so it settles on the next word overall
     const next = k + 1 < p.wordIdx.length ? words[p.wordIdx[k + 1]] : i === calloutIdx ? words[i + 1] : null;
-    if (next) tl.to(s, { ...off, marginLeft: '0em', marginRight: '0em', duration: m.pop, ease: 'power2.out' }, next.start);
+    if (next) tl.to(s, { ...off, duration: m.pop, ease: 'power2.out' }, next.start);
   });
 });
 tl.set({}, {}, duration); // timeline spans the whole video
@@ -73,24 +73,3 @@ tl.set({}, {}, duration); // timeline spans the whole video
 window.__timelines = window.__timelines || {};
 window.__timelines.main = tl;
 tl.seek(0);
-
-// Browser preview (?preview): drive the same timeline (and the cut-out subject clips) from the
-// video's clock. The renderer never sets this flag; it seeks frame by frame and owns clip timing.
-if (new URLSearchParams(location.search).has('preview')) {
-  const v = document.getElementById('source');
-  const subjects = [...document.querySelectorAll('video.subject')];
-  v.controls = true;
-  (function sync() {
-    const t = v.currentTime;
-    tl.seek(t);
-    for (const s of subjects) {
-      const local = t - Number(s.dataset.start);
-      const live = local >= 0 && local < Number(s.dataset.duration);
-      s.style.visibility = live ? 'visible' : 'hidden';
-      if (live && Math.abs(s.currentTime - local) > 0.08) s.currentTime = local;
-      if (live && !v.paused && s.paused) s.play().catch(() => {});
-      if ((!live || v.paused) && !s.paused) s.pause();
-    }
-    requestAnimationFrame(sync);
-  })();
-}
