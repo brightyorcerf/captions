@@ -62,6 +62,13 @@ test('does not end a phrase on a weak word', () => {
   for (const p of chunk(w)) assert.notEqual(w[p.wordIdx.at(-1)].text, 'the');
 });
 
+test('carries a run of weak words, not just the last one', () => {
+  // from a live Scribe run: "travel channel to | a hundred" stranded "to"
+  const w = speak('we built our travel channel to a hundred thousand followers');
+  const weak = new Set(['to', 'a', 'our']);
+  for (const p of chunk(w, { maxWords: 4, maxChars: 19 })) assert.ok(!weak.has(w[p.wordIdx.at(-1)].text), p.wordIdx.map(i => w[i].text).join(' '));
+});
+
 test('no lone orphan after a forced split', () => {
   const w = speak('alpha bravo charlie delta echo foxtrot.');
   const sizes = chunk(w).map(p => p.wordIdx.length);

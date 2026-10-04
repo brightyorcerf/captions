@@ -34,8 +34,9 @@ export function chunk(words, opts = {}) {
 
       if (hard) push(false);
       else if (full) {
-        // don't strand "the"/"of" at the end of a line: carry it into the next phrase
-        const carry = cur.length > 1 && WEAK.has(bare(words[cur.at(-1)].text)) && !o.free?.(cur.at(-1)) ? [cur.pop()] : [];
+        // don't strand "the"/"of" (or a run like "to a") at the end of a line: carry it into the next phrase
+        const carry = [];
+        while (cur.length > 1 && WEAK.has(bare(words[cur.at(-1)].text)) && !o.free?.(cur.at(-1))) carry.unshift(cur.pop());
         push(true);
         cur = carry;
       }
@@ -53,7 +54,8 @@ export function chunk(words, opts = {}) {
     if (line.length <= o.maxWords && textLen(line.map(k => words[k])) <= o.maxChars) {
       a.idx = all; a.soft = b.soft; groups.splice(g--, 1);
     } else {
-      const cut = Math.ceil(all.length / 2);
+      let cut = Math.ceil(all.length / 2);
+      while (cut > 1 && WEAK.has(bare(words[all[cut - 1]].text)) && !o.free?.(all[cut - 1])) cut--; // same weak-word rule
       const left = all.slice(0, cut), right = all.slice(cut);
       if (textLen(left.map(k => words[k])) <= o.maxChars && textLen(right.map(k => words[k])) <= o.maxChars) {
         a.idx = left; b.idx = right;
