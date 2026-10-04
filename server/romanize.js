@@ -4,9 +4,10 @@
 
 const COMMON = {
   'है': 'hai', 'हैं': 'hain', 'में': 'mein', 'मैं': 'main', 'मैंने': 'maine', 'को': 'ko', 'के': 'ke', 'का': 'ka',
-  'की': 'ki', 'ये': 'ye', 'यह': 'yeh', 'वो': 'wo', 'वह': 'woh', 'और': 'aur', 'नहीं': 'nahi', 'था': 'tha', 'थी': 'thi',
-  'थे': 'the', 'भी': 'bhi', 'लिए': 'liye', 'क्या': 'kya', 'तो': 'toh', 'से': 'se', 'हम': 'hum', 'आप': 'aap', 'यार': 'yaar',
+  'की': 'ki', 'ये': 'ye', 'यह': 'ye', 'वो': 'wo', 'वह': 'wo', 'और': 'aur', 'नहीं': 'nahi', 'था': 'tha', 'थी': 'thi',
+  'थे': 'the', 'भी': 'bhi', 'लिए': 'liye', 'क्या': 'kya', 'तो': 'to', 'से': 'se', 'हम': 'hum', 'आप': 'aap', 'यार': 'yaar',
   'बहुत': 'bahut', 'अच्छा': 'accha', 'कुछ': 'kuch', 'एक': 'ek', 'हाँ': 'haan', 'हां': 'haan', 'जो': 'jo', 'ना': 'na',
+  'क्योंकि': 'kyunki', 'उन्हीं': 'unhi',
 };
 
 const CONS = {
@@ -16,7 +17,7 @@ const CONS = {
   'ष': 'sh', 'स': 's', 'ह': 'h', 'क़': 'q', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'd', 'ढ़': 'rh', 'फ़': 'f',
 };
 const VOWELS = { 'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऑ': 'o' };
-const MATRAS = { 'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ॉ': 'o' };
+const MATRAS = { 'ा': 'a', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ॉ': 'o' };
 const VIRAMA = '्', NUKTA = '़', NASAL = new Set(['ं', 'ँ']), VISARGA = 'ः';
 const DIGITS = '०१२३४५६७८९';
 
@@ -32,10 +33,18 @@ function word(w) {
     if (ch[i + 1] === NUKTA) c += ch[++i];
     if (CONS[c]) {
       const next = ch[i + 1];
-      if (MATRAS[next]) { syl.push({ c: CONS[c], v: MATRAS[next] }); i++; }
+      if (MATRAS[next]) { syl.push({ c: CONS[c], v: MATRAS[next], long: next === 'ा' }); i++; }
       else if (next === VIRAMA) { syl.push({ c: CONS[c], v: '' }); i++; }
       else syl.push({ c: CONS[c], v: 'a', implicit: true });
-    } else if (VOWELS[c]) syl.push({ c: '', v: VOWELS[c] });
+    } else if (VOWELS[c]) {
+      // after another vowel: भाई bhai, हुआ hua, आएगा aayega (but हुए hue)
+      const prev = syl.at(-1)?.v;
+      let v = VOWELS[c];
+      if (prev && c === 'आ') v = 'a';
+      else if (prev && c === 'ई') v = 'i';
+      else if (prev?.endsWith('a') && c === 'ए') v = 'ye';
+      syl.push({ c: '', v });
+    }
     else if (NASAL.has(c) && syl.length) syl.at(-1).nasal = true;
     else if (c === VISARGA) syl.push({ c: 'h', v: '' });
     else if (DIGITS.includes(c)) syl.push({ c: String(DIGITS.indexOf(c)), v: '' });
@@ -50,12 +59,24 @@ function word(w) {
     if (i === last) x.v = '';
     else if (syl[i - 1].v && syl[i + 1]?.c && syl[i + 1].v) x.v = '';
   }
+  // pass 3: creator conventions
+  syl.forEach((x, i) => {
+    const next = syl[i + 1];
+    // a before a silent h: पहली pehli, रहना rehna (रहा keeps raha: its h is voiced)
+    if (x.implicit && x.v === 'a' && next?.c === 'h' && !next.v && syl[i + 2]?.c) x.v = 'e';
+    // long ee/oo only inside a word; at the end it's i/u: मीन meen, यानी yani
+    if (i === last && x.c && (x.v === 'ee' || x.v === 'oo')) x.v = x.v === 'ee' ? 'i' : 'u';
+  });
+  // closed monosyllable: long aa (बार baar, बात baat); open stays short (था tha)
+  const voiced = syl.filter(x => x.v);
+  if (voiced.length === 1 && voiced[0].long && voiced[0] !== syl[last]) voiced[0].v = 'aa';
   return syl.map(x => x.c + x.v + (x.nasal ? 'n' : '')).join('');
 }
 
 /** Romanises one transcript token, keeping surrounding punctuation and capitalising if it starts a sentence. */
 export function romanize(text, capitalise = false) {
-  const m = /^([^ऀ-ॿ]*)([ऀ-ॿ]+)(.*)$/u.exec(text);
+  // the danda (।, U+0964) sits inside the Devanagari block but is punctuation: keep it out of the word
+  const m = /^([^ऀ-ॣ०-ॿ]*)([ऀ-ॣ०-ॿ]+)(.*)$/u.exec(text);
   if (!m) return text.replace(/।/g, '.');
   const [, pre, core, post] = m;
   let r = word(core);
