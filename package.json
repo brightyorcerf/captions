@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server/index.js",
     "caption": "node --env-file-if-exists=.env server/cli.js",
-    "test": "node --test 'server/*.test.js'"
+    "test": "node --test \"server/**/*.test.js\""
   },
   "dependencies": {
     "hyperframes": "0.8.112"
