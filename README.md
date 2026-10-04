@@ -12,8 +12,15 @@ upload ─▶ ffmpeg ─▶ Scribe / Whisper ─▶ chunk + roles ─▶ matte �
 
 ## Quick start
 
+Requires Node 22+ and ffmpeg/ffprobe on your `PATH`:
+
+| OS | Install ffmpeg |
+|---|---|
+| macOS | `brew install ffmpeg` |
+| Windows | `winget install Gyan.FFmpeg` (or unzip a [gyan.dev build](https://www.gyan.dev/ffmpeg/builds/) and add its `bin` to `PATH`) |
+| Linux | `sudo apt install ffmpeg` |
+
 ```bash
-brew install ffmpeg            # Node 22+ is also required
 npm install
 cp .env.example .env           # add ELEVENLABS_API_KEY or OPENAI_API_KEY
 npm start                      # http://localhost:3030
