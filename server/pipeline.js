@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { chunk } from './chunk.js';
 import { assignRoles } from './roles.js';
 import { hasDevanagari, romanizeWords } from './romanize.js';
-import { transcribe } from './transcribe.js';
+import { pickProvider, transcribe } from './transcribe.js';
 
 const run = promisify(execFile);
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -198,8 +198,10 @@ export async function runJob(job, emit = () => {}, from = 'audio') {
         job.input = 'source.mp4';
       }
       if (step === 'transcribe') {
-        // cache by content hash: same video never pays for transcription twice
-        const cached = join(CACHE, `${await sha256(join(job.dir, 'audio.mp3'))}${job.language ? `-${job.language}` : ''}.json`);
+        // cache by content hash + everything that changes the result: same request never pays twice
+        const req = JSON.stringify([pickProvider(), job.language ?? null, [...(job.keyterms ?? [])].sort()]);
+        const key = createHash('sha256').update(await sha256(join(job.dir, 'audio.mp3'))).update(req).digest('hex');
+        const cached = join(CACHE, `${key}.json`);
         let t = await readFile(cached, 'utf8').then(JSON.parse, () => null);
         if (!t) {
           t = await transcribe(join(job.dir, 'audio.mp3'), { language: job.language, keyterms: job.keyterms });

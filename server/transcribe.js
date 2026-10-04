@@ -44,7 +44,7 @@ const providers = {
   },
 };
 
-function pickProvider(name = process.env.TRANSCRIBE_PROVIDER) {
+export function pickProvider(name = process.env.TRANSCRIBE_PROVIDER) {
   if (name) {
     if (!providers[name]) throw new Error(`unknown provider "${name}", use: ${Object.keys(providers).join(', ')}`);
     return name;
