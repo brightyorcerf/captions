@@ -13,7 +13,7 @@ const MAX_UPLOAD = 1024 ** 3; // 1 GB
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.webm', '.m4v']);
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
+  '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm',
 };
 const jobs = new Map(); // ponytail: in-memory, single process; a restart forgets jobs (files stay on disk)
 
@@ -124,7 +124,7 @@ http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     if (url.pathname.startsWith('/samples/')) return serveFile(req, res, join(ROOT, 'samples'), url.pathname.slice(9));
     // composition files for the preview iframe (input video, index.html, captions.js …)
-    const jm = /^\/jobs\/([\w-]+)\/([\w.-]+)$/.exec(url.pathname);
+    const jm = /^\/jobs\/([\w-]+)\/((?:fonts\/)?[\w.-]+)$/.exec(url.pathname);
     if (jm) return jobs.has(jm[1]) ? serveFile(req, res, join(JOBS, jm[1]), jm[2]) : send(res, 404, { error: 'not found' });
     return serveFile(req, res, join(ROOT, 'web'), url.pathname === '/' ? 'index.html' : url.pathname);
   } catch (err) {

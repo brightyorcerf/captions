@@ -54,6 +54,27 @@ function orientation({ width, height }) {
 
 const json = v => JSON.stringify(v).replace(/</g, '\\u003c'); // safe inside <script>
 
+/**
+ * Copies a style's fonts ("family/weight", from @fontsource) into the job so renders need no network.
+ * font-display is forced to block so no frame is ever captured with a fallback font.
+ */
+async function bundleFonts(dir, fonts = []) {
+  await mkdir(join(dir, 'fonts'), { recursive: true });
+  const css = [];
+  for (const f of fonts) {
+    if (!/^[a-z0-9-]+\/\d{3}$/.test(f)) throw new Error(`bad font "${f}", use family/weight e.g. "montserrat/700"`);
+    const [family, weight] = f.split('/');
+    const pkg = join(ROOT, 'node_modules/@fontsource', family);
+    const src = await readFile(join(pkg, `${weight}.css`), 'utf8').catch(() => {
+      throw new Error(`font "${f}" not installed, run: npm install @fontsource/${family}`);
+    });
+    for (const [, file] of src.matchAll(/url\(\.\/files\/([\w.-]+\.woff2)\)/g)) await copyFile(join(pkg, 'files', file), join(dir, 'fonts', file));
+    css.push(src.replace(/,\s*url\(\.\/files\/[\w.-]+\.woff\) format\('woff'\)/g, '')
+      .replaceAll('url(./files/', 'url(fonts/').replace(/font-display:\s*\w+/g, 'font-display: block'));
+  }
+  await writeFile(join(dir, 'fonts.css'), css.join('\n'));
+}
+
 async function compose(job) {
   const { dir, meta, style, words, phrases, input, mattes = [] } = job;
   // inlined (not linked) so the renderer's lint sees the timeline registration
@@ -61,13 +82,17 @@ async function compose(job) {
   await copyFile(join(ROOT, 'runtime/captions.css'), join(dir, 'captions.css'));
   await copyFile(join(ROOT, 'runtime/preview.js'), join(dir, 'preview.js'));
   await copyFile(join(ROOT, 'styles', job.styleName, 'style.css'), join(dir, 'style.css'));
+  // bundled, not CDN: renders work offline and can't change under us
+  await copyFile(join(ROOT, 'node_modules/gsap/dist/gsap.min.js'), join(dir, 'gsap.min.js'));
+  await bundleFonts(dir, style.fonts);
   const { width: W, height: H, duration: D } = meta;
   await writeFile(join(dir, 'index.html'), `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=${W}, height=${H}">
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="gsap.min.js"></script>
+  <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="captions.css">
   <link rel="stylesheet" href="style.css">
 </head>

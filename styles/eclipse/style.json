@@ -1,4 +1,5 @@
 {
+  "fonts": ["montserrat/700", "anton/400"],
   "fontScale": 0.071,
   "charWidth": 0.56,
   "maxLines": 1,

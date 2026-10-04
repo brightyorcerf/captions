@@ -92,8 +92,10 @@ Scribe may return Hindi speech in Devanagari script. Hinglish reels, the referen
 
 A style is a folder in `styles/`:
 
-- `style.json`: font scale, glyph width, placement per orientation, chunk limits, colours, glow and motion timings
-- `style.css`: font and look (stroke, background, casing)
+- `style.json`: fonts, font scale, glyph width, placement per orientation, chunk limits, colours, glow and motion timings
+- `style.css`: look (font family, stroke, background, casing)
+
+Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from the matching `@fontsource/*` npm package. They are copied into each job along with GSAP, so renders need no network and can't change when a CDN does.
 
 `styles/glido` is a second style in Glido's brand colours. Adding it needed no code changes, and the UI style picker lists whatever folders exist.
 
