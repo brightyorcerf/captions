@@ -89,9 +89,10 @@ ${runtime}
 }
 
 const exists = f => access(f).then(() => true, () => false);
-const HF_BIN = join(ROOT, 'node_modules/.bin/hyperframes');
+// run the CLI's JS entry with this node: .bin shims are shell scripts that execFile can't start on Windows
+const HF_CLI = [join(ROOT, 'node_modules/hyperframes/bin/hyperframes.mjs')];
 const HF_ENV = { ...process.env, HYPERFRAMES_SKIP_SKILLS: '1' };
-const hf = (...args) => run(HF_BIN, args,
+const hf = (...args) => run(process.execPath, [...HF_CLI, ...args],
   { env: HF_ENV, maxBuffer: 1 << 26 });
 
 /** Fraction of frame height where the subject's head starts, read from the matte's first frame. */
@@ -156,7 +157,7 @@ async function matte(job) {
 
 function render(job, emit) {
   return new Promise((ok, fail) => {
-    const p = spawn(HF_BIN, ['render', job.dir, '-o', join(job.dir, 'output.mp4'), '--quality', 'delivery'], { env: HF_ENV });
+    const p = spawn(process.execPath, [...HF_CLI, 'render', job.dir, '-o', join(job.dir, 'output.mp4'), '--quality', 'delivery'], { env: HF_ENV });
     let log = '';
     const onData = d => {
       log = (log + d).slice(-4000);
