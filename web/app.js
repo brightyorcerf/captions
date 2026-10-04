@@ -183,9 +183,16 @@ function renderPhrases(phrases) {
 
 rerender.onclick = async () => {
   rerender.disabled = true;
+  try {
+    const res = await fetch(`/api/jobs/${job.id}/transcript`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ words: job.words.map(({ text, role }) => ({ text, role })) }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+  } catch (err) {
+    statusEl.textContent = `re-render failed: ${err.message}`;
+    rerender.disabled = false; // edits are kept, so the user can retry
+    return;
+  }
   exportBtn.setAttribute('aria-disabled', 'true');
-  await fetch(`/api/jobs/${job.id}/transcript`, {
-    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ words: job.words.map(({ text, role }) => ({ text, role })) }),
-  });
   openJob(job.id, document.getElementById('job-name').textContent);
 };
