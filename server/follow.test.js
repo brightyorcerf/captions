@@ -39,6 +39,13 @@ test('a fast move by the camera is caught up within about a second', () => {
   assert.ok(off(13) <= 0.12, 'and back inside the dead zone');
 });
 
+test('two people taking turns: the crop stays on the main one', () => {
+  // the Nippard interview: the highest head alternates between the two in runs of a few seconds
+  const s = times(80).map((t, i) => ({ t, centre: Math.floor(i / 6) % 3 === 2 ? 0.75 : 0.3 }));
+  const c = track(s);
+  assert.ok(c.every(x => Math.abs(x - 0.3) < 0.01), `left the main person: ${[...new Set(c)]}`);
+});
+
 test('a camera cut jumps instead of panning', () => {
   const t = times(20), c = t.map(s => (s < 5.2 ? 0.3 : 0.7));
   const keys = follow(t, c, [5.2], CROP);

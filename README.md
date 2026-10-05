@@ -144,8 +144,10 @@ Tuned on the reference only, then run unchanged on Creative Commons clips from W
 |---|---|---|---|---|---|
 | Reference, reframed to landscape | Speaker off centre | Cropped on her head | 5 of 5 | 136 of 136 | 11 of 11 |
 | Markstrom | Extreme close-up | Whole frame, blurred fill | 0 of 4, all moved to the line with a warning | 158 of 158 | 6 of 6 |
-| Nippard | Two people, overlapping speech | Cropped on one person | 4 of 4 | 167 of 167 | 16 of 16 |
-| Darya and Avner | Mostly cutaways | Cropped on the speaker | 1 of 1 | 37 of 37 | 4 of 4 |
+| Nippard | Two people, overlapping speech | Follows one person, never swings to the other | 4 of 4 | 166 of 166 | 16 of 16 |
+| Darya and Avner | Mostly cutaways, 8 camera cuts | Follows the speaker, jumps on each cut | 1 of 1 | 37 of 37 | 4 of 4 |
+
+Nippard and Darya and Avner were rerun with the second version (the samples in `samples/output/`). Nippard also caught a regression on the way: the first following crop swung between the two men, because it followed whichever head was highest. It now tells two people apart from a camera move (two people alternate, a move goes one way) and stays on the main one.
 
 ### Checking against the reference
 

@@ -13,24 +13,46 @@ export const FOLLOW = {
 const median = v => [...v].sort((a, b) => a - b)[v.length >> 1];
 const cutBetween = (cuts, a, b) => cuts.find(c => c > a && c <= b);
 
+/** Head centres split where neighbours (sorted) are more than `gap` apart: one group per place a head was seen. */
+function groupsOf(centres, gap) {
+  const seen = centres.filter(c => c != null).sort((a, b) => a - b);
+  if (!seen.length) return [];
+  const groups = [[seen[0]]];
+  for (const c of seen.slice(1)) (c - groups.at(-1).at(-1) > gap ? groups.push([c]) : groups.at(-1).push(c));
+  return groups.sort((a, b) => b.length - a.length);
+}
+
 /**
- * Which head to follow at each sample. The highest head can flip between two people, so the track
- * starts on the person seen most often and ignores a head far from it unless a cut came in between
- * or it stays there. Samples without a head keep the last position.
+ * Which head to follow at each sample. The highest head can flip between two people, and that looks
+ * different from a camera move: two people leave two separate groups of positions and the head goes
+ * back and forth between them; a move goes one way (or leaves a trail of positions in between). So per
+ * shot (between cuts): when a second group holds a fifth of the samples or more and the head returns
+ * to a group it left, the track stays on the main person; otherwise a head that stays somewhere new is
+ * followed (a quick reframe by the camera). Samples without a head keep the last position.
  * @param {{t:number, centre:number|null}[]} samples  head centre as a fraction of the source width
  * @returns {number[]} one centre per sample
  */
 export function track(samples, cuts = [], o = FOLLOW) {
-  const seen = samples.map(s => s.centre).filter(c => c != null).sort((a, b) => a - b);
-  if (!seen.length) return samples.map(() => 0.5);
-  const groups = [[seen[0]]];
-  for (const c of seen.slice(1)) (c - groups.at(-1).at(-1) > o.jump ? groups.push([c]) : groups.at(-1).push(c));
-  let cur = median(groups.reduce((a, b) => (b.length > a.length ? b : a)));
+  const all = groupsOf(samples.map(s => s.centre), o.jump);
+  if (!all.length) return samples.map(() => 0.5);
+  // shots: the person to stay on, when a shot has two
+  const shotOf = i => cuts.filter(c => c <= samples[i].t).length;
+  const lock = new Map();
+  for (let k = 0; k <= cuts.length; k++) {
+    const own = samples.filter((_, i) => shotOf(i) === k).map(s => s.centre).filter(c => c != null);
+    const g = groupsOf(own, o.jump);
+    if (g.length < 2 || g[1].length < 0.2 * own.length) continue;
+    // the group each sample belongs to, in time order, collapsed into runs: A B A is two people, A B a move
+    const runs = own.map(c => g.findIndex(x => x.includes(c))).filter((v, i, a) => i === 0 || v !== a[i - 1]);
+    if (runs.some((v, i) => runs.indexOf(v) < i - 1)) lock.set(k, median(g[0]));
+  }
+  let cur = lock.get(0) ?? median(all[0]);
   let far = 0;
   const out = samples.map((s, i) => {
-    if (s.centre == null) return cur;
+    const main = lock.get(shotOf(i));
+    if (s.centre == null || (main !== undefined && Math.abs(s.centre - main) > o.jump)) return cur;
     const cut = i > 0 && cutBetween(cuts, samples[i - 1].t, s.t) !== undefined;
-    if (cut || Math.abs(s.centre - cur) <= o.jump || ++far >= o.reacquire) { cur = s.centre; far = 0; }
+    if (cut || main !== undefined || Math.abs(s.centre - cur) <= o.jump || ++far >= o.reacquire) { cur = s.centre; far = 0; }
     return cur;
   });
   // one-sample outliers (a hand raised above the head) are smoothed out, never across a cut
