@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chunk, DEFAULTS } from './chunk.js';
+import { chunk, DEFAULTS, spreadTimes } from './chunk.js';
 
 // Build a transcript from text: 0.3s per word, `|` marks a 0.8s pause
 function speak(text, rate = 0.3) {
@@ -94,4 +94,12 @@ test('free words (callouts) count as words but take no room on the line', () => 
   assert.deepEqual(chunk(w, { maxWords: 4, maxChars: 17, free: i => i === 0 }).map(p => p.wordIdx), [[0, 1, 2, 3]]);
   // but it still counts toward the word limit
   assert.equal(chunk(w, { maxWords: 3, maxChars: 99, free: i => i === 0 }).length, 2);
+});
+
+test('words sharing one timestamp are spread a frame apart', () => {
+  const w = [{ text: 'now-', start: 8.82, end: 9 }, ...['I', 'feel', 'the'].map(text => ({ text, start: 9.02, end: 9.02 })), { text: 'same', start: 9.06, end: 9.08 }];
+  spreadTimes(w);
+  for (let k = 1; k < w.length; k++) assert.ok(w[k].start - w[k - 1].start >= 1 / 30 - 1e-9, `${w[k].text} ${w[k].start}`);
+  for (const x of w) assert.ok(x.end - x.start >= 1 / 30 - 1e-9);
+  assert.equal(w[0].start, 8.82);
 });

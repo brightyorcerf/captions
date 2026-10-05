@@ -71,3 +71,18 @@ export function chunk(words, opts = {}) {
     return { start, end: Math.min(words[idx.at(-1)].end + o.hold, next), wordIdx: idx };
   });
 }
+
+/**
+ * Transcribers sometimes return zero-length words sharing one timestamp (crosstalk, fast fillers:
+ * "I feel the" all at 9.02 s). Such words would never be visible while highlighted, so every word
+ * gets at least one frame and starts strictly after the previous one. Mutates and returns words.
+ */
+export function spreadTimes(words, frame = 1 / 30) {
+  let prev = -Infinity;
+  for (const w of words) {
+    w.start = Math.max(w.start, prev + frame);
+    w.end = Math.max(w.end, w.start + frame);
+    prev = w.start;
+  }
+  return words;
+}

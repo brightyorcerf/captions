@@ -5,7 +5,7 @@ import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { chunk } from './chunk.js';
+import { chunk, spreadTimes } from './chunk.js';
 import { assignRoles } from './roles.js';
 import { hasDevanagari, romanizeWords } from './romanize.js';
 import { pickProvider, transcribe } from './transcribe.js';
@@ -157,13 +157,20 @@ async function silhouette(file, fps = 10) {
     }));
   }
   const median = Array.from({ length: gw }, (_, x) => frames.map(f => f[x]).sort((p, q) => p - q)[frames.length >> 1] ?? gh);
-  const top = Math.min(...median);
-  // the head: columns within 8% of the frame height of the highest point
-  const head = median.flatMap((y, x) => (y <= top + gh * 0.08 ? [x] : []));
-  return {
-    frames, median,
-    head: top < gh ? { top: top / gh, left: head[0] / gw, right: (head.at(-1) + 1) / gw } : null,
-  };
+  return { frames, median, head: headOf(median) };
+}
+
+/**
+ * The highest head in an outline: the connected run of columns within 8% of the frame height of the
+ * highest point. Connected, so with two people side by side it is one head, not the span across both.
+ */
+function headOf(contour) {
+  const [gw, gh] = GRID, top = Math.min(...contour);
+  if (top >= gh) return null;
+  let l = contour.indexOf(top), r = l;
+  while (l > 0 && contour[l - 1] <= top + gh * 0.08) l--;
+  while (r < gw - 1 && contour[r + 1] <= top + gh * 0.08) r++;
+  return { top: top / gh, left: l / gw, right: (r + 1) / gw };
 }
 
 /**
@@ -178,6 +185,7 @@ async function silhouette(file, fps = 10) {
 const MATTE_FPS = 15;
 const RENDER_FPS = 30; // hyperframes' default composition rate
 const HEAD_TOO_LOW = 0.5; // head top below mid-frame: a word behind it would collide with the caption line
+const HEAD_TOO_HIGH = 0.04; // head cut by the top edge (a close-up): a word behind it would be almost all hidden
 async function matte(job) {
   job.mattes = [];
   job.warnings = (job.warnings ?? []).filter(w => w.kind !== 'callout');
@@ -225,6 +233,7 @@ async function matte(job) {
     const reason = !sil ? `the speaker cut-out failed (${failure ?? 'no output'})`
       : !sil.head ? 'no person was found in the frame'
       : sil.head.top > HEAD_TOO_LOW ? `the head is too low in the frame (${Math.round(sil.head.top * 100)}% down)`
+      : sil.head.top < HEAD_TOO_HIGH ? 'the head reaches the top of the frame, so there is no room for a word behind it'
       : null;
     if (reason) {
       // shown in the line as a keyword rather than in front of the speaker's face
@@ -245,7 +254,8 @@ async function matte(job) {
  * UGC layout: any video wider than 9:16 becomes a 1080×1920 vertical frame, cropped around the speaker.
  * The speaker is found by cutting the person out of ~12 frames spread over the clip (cheap: tiny frames,
  * one model run) and taking the median head centre. The crop is fixed, not panning: a steady frame
- * reads better than a jittery follow, and talking heads rarely cross the frame.
+ * reads better than a jittery follow, and talking heads rarely cross the frame. A close-up (head cut by
+ * the top edge) or a video with nobody in it is fitted whole over a blurred fill instead.
  * Returns an ffmpeg filter, or null when the video is already vertical.
  */
 const UGC = [1080, 1920];
@@ -253,37 +263,52 @@ async function reframe(job) {
   const { width: W, height: H, duration } = job.meta;
   if (H / W >= 1.7) return null; // already 9:16 (or taller)
   const cw = Math.min(W, Math.round((H * 9) / 16 / 2) * 2);
-  let centre = 0.5;
+  // fit: the whole frame across the middle, a blurred, darkened copy filling above and below
+  const fit = `split[a][b];[a]scale=${UGC[0]}:${UGC[1]}:force_original_aspect_ratio=increase,crop=${UGC[0]}:${UGC[1]},boxblur=24,eq=brightness=-0.12[bg];`
+    + `[b]scale=${UGC[0]}:-2:flags=lanczos[fg];[bg][fg]overlay=0:(H-h)/2,setsar=1`;
   const strip = join(job.dir, '.reframe-in.mp4'), mask = join(job.dir, '.reframe-mask.webm');
   try {
     const n = 12;
-    await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-an', '-vf', `fps=${n / duration},scale=-2:360`,
-      '-frames:v', `${n}`, '-c:v', 'libx264', '-preset', 'veryfast', strip]);
+    await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-an', '-vf', `fps=${n / duration},scale=-2:360,setpts=N/TB`,
+      '-r', '1', '-frames:v', `${n}`, '-c:v', 'libx264', '-preset', 'veryfast', strip]);
     await hf('remove-background', strip, '-o', mask, '--quality', 'fast');
-    const { frames } = await silhouette(mask, 1);
-    const centres = frames.map(f => {
-      const top = Math.min(...f);
-      if (top >= GRID[1]) return null;
-      const head = f.flatMap((y, x) => (y <= top + GRID[1] * 0.08 ? [x] : []));
-      return (head[0] + head.at(-1) + 1) / 2 / GRID[0];
-    }).filter(c => c != null).sort((a, b) => a - b);
-    if (!centres.length) throw new Error('no person found');
-    centre = centres[centres.length >> 1];
+    const heads = (await silhouette(mask, 1)).frames.map(headOf).filter(Boolean)
+      .map(h => ({ top: h.top, centre: (h.left + h.right) / 2 }));
+    if (heads.length < 3) throw new Error('no person found');
+    // two people: the highest head can flip between them, so group the frames by where the head is
+    // (> 15% of the width apart = another person) and frame the person seen most often
+    heads.sort((a, b) => a.centre - b.centre);
+    const groups = [[heads[0]]];
+    for (const h of heads.slice(1)) (h.centre - groups.at(-1).at(-1).centre > 0.15 ? groups.push([h]) : groups.at(-1).push(h));
+    const person = groups.reduce((a, b) => (b.length > a.length ? b : a));
+    const median = k => person.map(h => h[k]).sort((a, b) => a - b)[person.length >> 1];
+    const centre = median('centre'), top = median('top');
+    // a close-up (head cut by the top of the frame) cropped to 9:16 is just an enlarged face with no
+    // room above the head for a callout: fit the whole frame instead
+    if (top < 0.04) {
+      job.reframe = { mode: 'fit', reason: 'close-up', centre, top };
+      return fit;
+    }
+    const x = Math.round(Math.max(0, Math.min(W - cw, centre * W - cw / 2)) / 2) * 2;
+    job.reframe = { mode: 'crop', centre, top, x, width: cw };
+    return `crop=${cw}:${H}:${x}:0,scale=${UGC[0]}:${UGC[1]}:flags=lanczos,setsar=1`;
   } catch (err) {
     const reason = err.message.split('\n')[0];
     job.warnings.push({ kind: 'reframe', reason,
-      message: `Couldn't find the speaker to frame the 9:16 crop (${reason}), so the centre of the frame is used.` });
+      message: `Couldn't find the speaker to frame the 9:16 crop (${reason}), so the whole frame is shown over a blurred fill.` });
+    job.reframe = { mode: 'fit', reason };
+    return fit;
   } finally {
     await rm(strip, { force: true }); await rm(mask, { force: true });
   }
-  const x = Math.round(Math.max(0, Math.min(W - cw, centre * W - cw / 2)) / 2) * 2;
-  job.reframe = { centre, x, width: cw };
-  return `crop=${cw}:${H}:${x}:0,scale=${UGC[0]}:${UGC[1]}:flags=lanczos,setsar=1`;
 }
 
 function render(job, emit) {
   return new Promise((ok, fail) => {
-    const p = spawn(process.execPath, [...HF_CLI, 'render', job.dir, '-o', join(job.dir, 'output.mp4'), '--quality', 'delivery'], { env: HF_ENV });
+    // clips over 20 s are captured in 10 s segments with a fresh browser each: one long-lived Chrome decoding
+    // the source and every cut-out grows until an 8 GB machine stalls (the 50 s reference stalled ~frame 750)
+    const env = { ...HF_ENV, HF_SEGMENTED_CAPTURE: 'true', HF_SEGMENTED_MIN_SECONDS: '20', HF_SEGMENT_FRAMES: '300', HF_SEGMENT_BROWSER_RECYCLE: '1' };
+    const p = spawn(process.execPath, [...HF_CLI, 'render', job.dir, '-o', join(job.dir, 'output.mp4'), '--quality', 'delivery'], { env });
     let log = '';
     const onData = d => {
       log = (log + d).slice(-4000);
@@ -350,6 +375,7 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
         job.words = t.words;
         // Hindi may come back in Devanagari; Hinglish reels are captioned in Latin script
         if (job.words.some(w => hasDevanagari(w.text))) romanizeWords(job.words);
+        spreadTimes(job.words);
         job.language = t.language;
       }
       if (step === 'chunk') {
@@ -384,6 +410,7 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
 /** Re-opens a job folder written by an earlier run (transcript.json + source.mp4), e.g. to re-run from 'chunk'. */
 export async function loadJob(dir, { styleName = 'eclipse', keyterms, layout } = {}) {
   const { words } = JSON.parse(await readFile(join(dir, 'transcript.json'), 'utf8'));
+  spreadTimes(words);
   const style = await loadStyle(styleName);
   return { id: dir.split(/[\/]/).at(-1), dir, input: 'source.mp4', styleName, style, keyterms, words,
     layout: layout ?? style.layout ?? 'original', meta: await probe(join(dir, 'source.mp4')), state: null };
