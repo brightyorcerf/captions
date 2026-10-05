@@ -15,7 +15,7 @@
   <!-- landing -->
   <main id="landing">
     <h1 class="wordmark">captions</h1>
-    <p class="tagline">Drop a talking-head video. Get word-perfect,<br>animated captions back. In your style, in any language.</p>
+    <p class="tagline">Upload a video, get<br>scroll-stopping captions.</p>
 
     <form id="upload" class="bar">
       <label class="drop" for="file">
@@ -33,6 +33,11 @@
       </select>
       <button type="submit" class="go" disabled>Caption</button>
     </form>
+
+    <div class="key-row" id="key-row" hidden>
+      <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Your ElevenLabs API key" aria-label="ElevenLabs API key">
+      <span class="hint" id="key-hint">Used for this upload only. Never stored on the server.</span>
+    </div>
 
     <a class="samples" href="#samples" hidden>sample renders ↓</a>
     <p class="hint">up to 10 min · mp4 / mov / webm · keys never leave the server</p>

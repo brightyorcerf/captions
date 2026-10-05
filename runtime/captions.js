@@ -70,7 +70,8 @@ phrases.forEach((p, n) => {
     tl.to(s, { ...on, duration: m.pop, ease: 'back.out(3)' }, words[i].start);
     // settle when the next word starts; a callout outlives its phrase, so it settles on the next word overall
     const next = k + 1 < p.wordIdx.length ? words[p.wordIdx[k + 1]] : i === calloutIdx ? words[i + 1] : null;
-    if (next) tl.to(s, { ...off, duration: m.pop, ease: 'power2.out' }, next.start);
+    // a callout stays lit at least co.minActive, so a fast talker's big word doesn't just flash yellow
+    if (next) tl.to(s, { ...off, duration: m.pop, ease: 'power2.out' }, i === calloutIdx ? Math.max(next.start, words[i].start + (co.minActive ?? 0)) : next.start);
   });
 });
 tl.set({}, {}, duration); // timeline spans the whole video

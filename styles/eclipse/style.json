@@ -9,6 +9,6 @@
   "colors": { "text": "#ffffff", "active": "#fee300" },
   "highlight": { "on": "rgba(254,227,0,0.30)", "off": "rgba(254,227,0,0)" },
   "motion": { "activeScale": 1, "dimOpacity": 1, "pop": 0, "in": 0, "out": 0 },
-  "callout": { "size": 0.298, "width": 0.906, "left": 0.065, "narrow": 0.4, "narrowScale": 1.22, "depth": 0.55, "narrowOffset": -0.04, "tuck": 0.34, "minDepth": 0.15, "maxDepth": 0.85, "minHidden": 0.03, "maxHidden": 0.6, "top": 0.03, "fallbackY": 0.2, "lineLift": 0.8 },
+  "callout": { "size": 0.298, "width": 0.906, "left": 0.065, "narrow": 0.4, "narrowScale": 1.22, "depth": 0.55, "narrowOffset": -0.04, "tuck": 0.34, "minDepth": 0.15, "maxDepth": 0.85, "minHidden": 0.03, "maxHidden": 0.6, "top": 0.03, "fallbackY": 0.2, "lineLift": 0.8, "minHold": 0.9, "minActive": 0.4 },
   "layout": "9:16"
 }

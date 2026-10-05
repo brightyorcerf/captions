@@ -54,7 +54,8 @@ for (const dir of process.argv.slice(2).map(d => resolve(d))) {
       if (line && call && call[3] > line[1]) out.frame.push(`callout over the caption line at ${p.start.toFixed(1)}s`);
       p.wordIdx.forEach(i => {
         tl.seek(words[i].start + 0.017);
-        const a = active().map(s => s.textContent);
+        // a big word may stay lit a little past the next word's start (callout.minActive)
+        const a = active().filter(s => !s.closest('.callout') || s.textContent === words[i].text).map(s => s.textContent);
         if (a.length === 1 && a[0] === words[i].text) out.sync.ok++; else out.sync.bad.push(`${words[i].start.toFixed(2)}s "${words[i].text}" → [${a.join(', ')}]`);
       });
     });

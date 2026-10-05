@@ -40,6 +40,8 @@ cp .env.example .env           # add ELEVENLABS_API_KEY or OPENAI_API_KEY
 npm start                      # http://localhost:3030
 ```
 
+No key in `.env`? Paste your ElevenLabs key on the upload form instead. It is sent in a request header with that upload only, kept in memory for that job, and never written to disk, logged or returned by the API.
+
 Batch / headless mode uses the same pipeline:
 
 ```bash
@@ -129,7 +131,9 @@ Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from th
 
 `samples/input/` holds the source clips and `samples/output/` holds the rendered results, one per style. The landing page lists whatever is in `samples/output/`.
 
-`interview-two-people` and `interview-cutaways` are renders of Creative Commons interviews from the [test set](#testing): landscape sources cropped to 9:16 around the speaker, with words behind the head (credits in [samples/CREDITS.md](samples/CREDITS.md)). `synthetic-portrait.mp4` is a generated clip: macOS `say` speech over a gradient. It exercises the full render path without real footage.
+`interview-two-people` and `interview-cutaways` are renders of Creative Commons interviews from the [test set](#testing): landscape sources cropped to 9:16 around the speaker, with words behind the head (credits in [samples/CREDITS.md](samples/CREDITS.md)). `samples/input/synthetic-portrait.mp4` is a generated clip (macOS `say` speech over a gradient) with its transcript next to it, so the full pipeline runs without a key.
+
+Output files are named `<video>.<style>.mp4`: **eclipse** is the style measured from the reference reel, **glido** a second style in Glido's colours that shows a new look is just a config folder.
 
 **Reference check.** The Eclipse reference reel (50 s, Hinglish, already captioned) is client footage, so it is kept out of the repo. Drop it in `reference/` (gitignored) and run:
 

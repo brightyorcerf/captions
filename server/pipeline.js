@@ -25,12 +25,12 @@ async function guardCredits(seconds, allowLong) {
 }
 
 /** Running total of audio sent to the paid API, kept next to the transcript cache. */
-async function logUsage(seconds) {
+async function logUsage(seconds, provider) {
   const u = await readFile(USAGE, 'utf8').then(JSON.parse, () => ({ seconds: 0, calls: [] }));
   u.seconds += seconds;
-  u.calls.push({ at: new Date().toISOString(), provider: pickProvider(), seconds: Math.round(seconds * 10) / 10 });
+  u.calls.push({ at: new Date().toISOString(), provider, seconds: Math.round(seconds * 10) / 10 });
   await writeFile(USAGE, JSON.stringify(u, null, 1));
-  console.log(`[stt] sent ${seconds.toFixed(1)}s to ${pickProvider()}, ${(u.seconds / 60).toFixed(1)} min in total on this machine`);
+  console.log(`[stt] sent ${seconds.toFixed(1)}s to ${provider}, ${(u.seconds / 60).toFixed(1)} min in total on this machine`);
   return { seconds, totalSeconds: u.seconds };
 }
 const STEPS = ['audio', 'transcribe', 'chunk', 'matte', 'compose', 'render'];
@@ -323,13 +323,13 @@ function render(job, emit) {
 }
 
 /** Creates a job folder. `source` is copied in unless the caller already wrote `input<ext>` there. */
-export async function createJob({ id, ext, styleName = 'eclipse', source, language, keyterms, transcriptFile, allowLong, layout }) {
+export async function createJob({ id, ext, styleName = 'eclipse', source, language, keyterms, transcriptFile, allowLong, layout, apiKey }) {
   const dir = join(JOBS, id);
   await mkdir(dir, { recursive: true });
   const input = `input${ext}`;
   if (source) await copyFile(source, join(dir, input));
   const style = await loadStyle(styleName);
-  return { id, dir, input, styleName, style, language, keyterms, transcriptFile, allowLong, layout: layout ?? style.layout ?? 'original', state: null };
+  return { id, dir, input, styleName, style, language, keyterms, transcriptFile, allowLong, apiKey, layout: layout ?? style.layout ?? 'original', state: null };
 }
 
 /** Runs the pipeline from `from` to `to`. Re-running from 'chunk' re-uses the (edited) transcript: no API call. */
@@ -358,7 +358,7 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
         // 2. cache by content hash + everything that changes the result: same request never pays twice
         let cached;
         if (!t) {
-          const req = JSON.stringify([pickProvider(), job.language ?? null, [...(job.keyterms ?? [])].sort()]);
+          const req = JSON.stringify([pickProvider(undefined, job.apiKey), job.language ?? null, [...(job.keyterms ?? [])].sort()]);
           const key = createHash('sha256').update(await sha256(join(job.dir, 'audio.mp3'))).update(req).digest('hex');
           cached = join(CACHE, `${key}.json`);
           t = await readFile(cached, 'utf8').then(JSON.parse, () => null);
@@ -366,10 +366,10 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
         // 3. the API, behind a spending guard
         if (!t) {
           await guardCredits(job.meta.duration, job.allowLong);
-          t = await transcribe(join(job.dir, 'audio.mp3'), { language: job.language, keyterms: job.keyterms });
+          t = await transcribe(join(job.dir, 'audio.mp3'), { language: job.language, keyterms: job.keyterms, apiKey: job.apiKey });
           await mkdir(CACHE, { recursive: true });
           await writeFile(cached, JSON.stringify(t));
-          job.usage = await logUsage(job.meta.duration);
+          job.usage = await logUsage(job.meta.duration, pickProvider(undefined, job.apiKey));
         }
         if (!t.words.length) throw new Error('no speech found in this video');
         job.words = t.words;
@@ -387,11 +387,15 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
         }
         // callout words are lifted out of the line: they count as words of the phrase but take no line width
         job.phrases = chunk(job.words, { ...opts, free: i => job.style.callout && job.words[i].role === 'callout' });
-        // a callout lives exactly as long as its phrase (measured: 0.9–1.8 s, hard cut in and out)
+        // a callout lives as long as its phrase (hard cut in and out), and never less than the reference's
+        // shortest (0.9 s): with a fast talker the phrase is gone in 0.5 s and the word would only flash
         if (job.style.callout) {
+          const starts = job.phrases.filter(p => p.wordIdx.some(i => job.words[i].role === 'callout')).map(p => p.start);
           for (const p of job.phrases) {
             const idx = p.wordIdx.find(i => job.words[i].role === 'callout');
-            if (idx !== undefined) p.callout = { idx, start: p.start, end: p.end };
+            if (idx === undefined) continue;
+            const next = starts.find(s => s > p.start) ?? job.meta.duration;
+            p.callout = { idx, start: p.start, end: Math.max(p.end, Math.min(p.start + (job.style.callout.minHold ?? 0), next, job.meta.duration)) };
           }
         }
         await writeFile(join(job.dir, 'transcript.json'), JSON.stringify({ words: job.words, phrases: job.phrases }, null, 1));

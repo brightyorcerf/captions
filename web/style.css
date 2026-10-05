@@ -137,3 +137,8 @@ select {
   .drop { flex-basis: 100%; }
   select, .bar .go { flex: 1; }
 }
+
+/* your own ElevenLabs key, under the upload bar */
+.key-row { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 14px auto 0; width: min(520px, 100%); }
+.key-row input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, .2); background: rgba(255, 255, 255, .92); font: 14px var(--mono); }
+.key-row .hint { font: 12px var(--mono); color: var(--ink); opacity: .75; }

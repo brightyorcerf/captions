@@ -18,12 +18,12 @@ async function post(url, headers, body) {
 
 const providers = {
   // ElevenLabs Scribe: words come back punctuated, with type word | spacing | audio_event
-  async elevenlabs(file, { language, keyterms }) {
+  async elevenlabs(file, { language, keyterms, apiKey }) {
     const fields = { model_id: 'scribe_v2', timestamps_granularity: 'word', tag_audio_events: 'false' };
     if (language) fields.language_code = language;
     if (keyterms?.length) fields.keyterms = keyterms;
     const data = await post('https://api.elevenlabs.io/v1/speech-to-text',
-      { 'xi-api-key': process.env.ELEVENLABS_API_KEY }, await form(file, fields));
+      { 'xi-api-key': apiKey ?? process.env.ELEVENLABS_API_KEY }, await form(file, fields));
     return {
       language: data.language_code,
       words: data.words.filter(w => w.type === 'word').map(({ text, start, end }) => ({ text: text.trim(), start, end })),
@@ -44,14 +44,17 @@ const providers = {
   },
 };
 
-export function pickProvider(name = process.env.TRANSCRIBE_PROVIDER) {
+/** apiKey: an ElevenLabs key supplied with the upload (website), used instead of the server's. */
+export function pickProvider(name = process.env.TRANSCRIBE_PROVIDER, apiKey) {
+  if (apiKey) return 'elevenlabs';
   if (name) {
     if (!providers[name]) throw new Error(`unknown provider "${name}", use: ${Object.keys(providers).join(', ')}`);
     return name;
   }
   if (process.env.ELEVENLABS_API_KEY) return 'elevenlabs';
   if (process.env.OPENAI_API_KEY) return 'openai';
-  throw new Error('no transcription key: set ELEVENLABS_API_KEY or OPENAI_API_KEY in .env');
+  throw new Error('no transcription key: add your ElevenLabs key on the upload form, or set ELEVENLABS_API_KEY in .env');
 }
 
-export const transcribe = (file, opts = {}) => providers[pickProvider()](file, opts);
+export const transcribe = (file, opts = {}) => providers[pickProvider(undefined, opts.apiKey)](file, opts);
+export const hasServerKey = () => !!(process.env.ELEVENLABS_API_KEY || process.env.OPENAI_API_KEY);

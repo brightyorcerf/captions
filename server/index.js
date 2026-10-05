@@ -6,6 +6,7 @@ import http from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { JOBS, ROOT, createJob, listStyles, runJob } from './pipeline.js';
+import { hasServerKey } from './transcribe.js';
 
 const PORT = Number(process.env.PORT) || 3030;
 const HOST = process.env.HOST || '127.0.0.1'; // local only unless you opt in
@@ -50,6 +51,9 @@ async function readJson(req, limit = 5e6) {
 const routes = {
   'GET /api/styles': async (req, res) => send(res, 200, await listStyles()),
 
+  // tells the upload form whether it must ask for an ElevenLabs key
+  'GET /api/config': (req, res) => send(res, 200, { serverKey: hasServerKey() }),
+
   'GET /api/samples': async (req, res) =>
     send(res, 200, (await readdir(join(ROOT, 'samples/output')).catch(() => [])).filter(f => f.endsWith('.mp4')).sort()),
 
@@ -58,13 +62,18 @@ const routes = {
     const ext = extname(url.searchParams.get('name') ?? '').toLowerCase();
     if (!VIDEO_EXT.has(ext)) return send(res, 415, { error: `unsupported file type "${ext}", use mp4, mov or webm` });
     if (Number(req.headers['content-length']) > MAX_UPLOAD) return send(res, 413, { error: 'file too large (1 GB max)' });
+    // a visitor's own ElevenLabs key: in a header (never the URL), kept in memory for this job only,
+    // never written to disk, logged or sent back
+    const apiKey = req.headers['x-elevenlabs-key']?.trim() || undefined;
+    if (apiKey && !/^[\w-]{16,128}$/.test(apiKey)) return send(res, 400, { error: 'that does not look like an ElevenLabs API key' });
+    if (!apiKey && !hasServerKey()) return send(res, 400, { error: 'add your ElevenLabs API key to transcribe' });
     const styleName = url.searchParams.get('style') || 'eclipse';
     if (!(await listStyles()).includes(styleName)) return send(res, 400, { error: `unknown style "${styleName}"` });
 
     const id = randomUUID();
     const layout = url.searchParams.get('layout') || undefined;
     if (layout && !['9:16', 'original'].includes(layout)) return send(res, 400, { error: 'layout must be 9:16 or original' });
-    const job = await createJob({ id, ext, styleName, layout, language: url.searchParams.get('language') || undefined,
+    const job = await createJob({ id, ext, styleName, layout, apiKey, language: url.searchParams.get('language') || undefined,
       keyterms: url.searchParams.get('keyterms')?.split(',').map(s => s.trim()).filter(Boolean) });
     let size = 0;
     try {

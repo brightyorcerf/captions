@@ -70,7 +70,9 @@ form.addEventListener('submit', async e => {
     const f = file.files[0];
     const q = new URLSearchParams({ name: f.name, style: form.elements.style.value });
     if (form.elements.layout.value) q.set('layout', form.elements.layout.value);
-    const res = await fetch(`/api/jobs?${q}`, { method: 'POST', body: f });
+    const key = apiKey.value.trim();
+    if (key) try { sessionStorage.setItem('elevenlabs-key', key); } catch {}
+    const res = await fetch(`/api/jobs?${q}`, { method: 'POST', body: f, headers: key ? { 'x-elevenlabs-key': key } : {} });
     if (!res.ok) throw new Error((await res.json()).error);
     const { id } = await res.json();
     openJob(id, file.files[0].name);
@@ -82,6 +84,20 @@ form.addEventListener('submit', async e => {
   }
 });
 
+// ---------- your own ElevenLabs key ----------
+// Shown on the landing page; required when the server has no key of its own. Kept in this tab only
+// (sessionStorage), sent as a header with the upload, never put in a URL.
+const apiKey = document.getElementById('api-key');
+const keyRow = document.getElementById('key-row');
+try { apiKey.value = sessionStorage.getItem('elevenlabs-key') ?? ''; } catch {}
+fetch('/api/config').then(r => r.json()).then(({ serverKey }) => {
+  keyRow.hidden = false;
+  if (serverKey) {
+    apiKey.placeholder = 'Your ElevenLabs API key (optional)';
+    document.getElementById('key-hint').textContent = 'Optional: the server has a key. Yours is used for this upload only, never stored.';
+  }
+}).catch(() => {});
+
 // ---------- samples ----------
 fetch('/api/samples').then(r => r.json()).then(files => {
   if (!files.length) return;
@@ -89,7 +105,7 @@ fetch('/api/samples').then(r => r.json()).then(files => {
     const fig = document.createElement('figure');
     const v = Object.assign(document.createElement('video'), { src: `/samples/output/${f}#t=1.2`, controls: true, preload: 'metadata', playsInline: true });
     const cap = document.createElement('figcaption');
-    cap.textContent = f.replace(/\.mp4$/, '');
+    cap.textContent = f.replace(/(\.[\w-]+)?\.mp4$/, '').replace(/-/g, ' '); // "interview-cutaways.eclipse.mp4" → "interview cutaways"
     fig.append(v, cap);
     return fig;
   }));
