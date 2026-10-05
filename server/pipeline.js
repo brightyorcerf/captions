@@ -205,9 +205,9 @@ export async function createJob({ id, ext, styleName = 'eclipse', source, langua
   return { id, dir, input, styleName, style: await loadStyle(styleName), language, keyterms, state: null };
 }
 
-/** Runs the pipeline from `from` onwards. Re-running from 'chunk' re-uses the (edited) transcript: no API call. */
-export async function runJob(job, emit = () => {}, from = 'audio') {
-  const steps = STEPS.slice(STEPS.indexOf(from));
+/** Runs the pipeline from `from` to `to`. Re-running from 'chunk' re-uses the (edited) transcript: no API call. */
+export async function runJob(job, emit = () => {}, from = 'audio', to = 'render') {
+  const steps = STEPS.slice(STEPS.indexOf(from), STEPS.indexOf(to) + 1);
   const tell = e => { job.state = e; emit(e); };
   let step;
   try {
@@ -264,7 +264,7 @@ export async function runJob(job, emit = () => {}, from = 'audio') {
       if (step === 'compose') await compose(job);
       if (step === 'render') await render(job, tell);
     }
-    tell({ step: 'render', status: 'done' });
+    tell({ step: to, status: 'done' });
   } catch (err) {
     tell({ step, status: 'error', error: err.message });
     throw err;
