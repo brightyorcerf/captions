@@ -69,6 +69,7 @@ form.addEventListener('submit', async e => {
   try {
     const f = file.files[0];
     const q = new URLSearchParams({ name: f.name, style: form.elements.style.value });
+    if (form.elements.layout.value) q.set('layout', form.elements.layout.value);
     const res = await fetch(`/api/jobs?${q}`, { method: 'POST', body: f });
     if (!res.ok) throw new Error((await res.json()).error);
     const { id } = await res.json();
@@ -141,7 +142,22 @@ async function loadJob() {
   document.querySelector('.preview').style.aspectRatio = `${data.meta.width} / ${data.meta.height}`;
   document.getElementById('preview').src = data.previewUrl;
   renderPhrases(data.phrases);
+  showWarnings(data.warnings ?? []);
 }
+
+// a callout that could not go behind the speaker is never dropped silently: say which and why
+const warnEl = document.getElementById('warnings');
+function showWarnings(list) {
+  warnEl.hidden = !list.length;
+  warnEl.querySelector('ul').replaceChildren(...list.map(w => Object.assign(document.createElement('li'), { textContent: w.message })));
+}
+document.getElementById('retry-matte').onclick = async () => {
+  const res = await fetch(`/api/jobs/${job.id}/retry-matte`, { method: 'POST' });
+  if (!res.ok) { statusEl.textContent = `retry failed: ${(await res.json().catch(() => ({}))).error ?? res.status}`; return; }
+  warnEl.hidden = true;
+  exportBtn.setAttribute('aria-disabled', 'true');
+  openJob(job.id, document.getElementById('job-name').textContent);
+};
 
 const ROLES = [null, 'emphasis', 'callout'];
 
@@ -153,6 +169,7 @@ function renderPhrases(phrases) {
     for (const wi of p.wordIdx) {
       const b = document.createElement('button');
       b.className = `word ${job.words[wi].role ?? ''}`; b.textContent = job.words[wi].text;
+      if (p.callout?.idx === wi && p.callout.fallback) { b.classList.add('fallback'); b.title = `shown in the line: ${p.callout.fallback}`; }
       b.oncontextmenu = e => {
         e.preventDefault();
         const w = job.words[wi];

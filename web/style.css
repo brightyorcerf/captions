@@ -118,6 +118,9 @@ select {
 .word:hover, .word:focus { background: rgb(52 195 117 / .2); outline: none; }
 .word.emphasis { text-transform: uppercase; font-weight: 700; letter-spacing: .02em; }
 .word.callout { text-transform: uppercase; font-weight: 700; background: var(--ink); color: var(--green); }
+.word.callout.fallback { outline: 2px dashed #e0a100; outline-offset: 1px; }
+.warn { background: #fff4c2; color: #4a3b00; border: 1px solid #e0a100; padding: 10px 14px; border-radius: 8px; margin: 0 0 12px; font-size: 13px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.warn ul { margin: 0; padding-left: 18px; flex: 1 1 320px; }
 .word[contenteditable="true"] { background: var(--green); color: var(--white); }
 .actions { display: flex; gap: 8px; margin-top: 16px; }
 .actions > * { flex: 1; text-align: center; }

@@ -62,7 +62,9 @@ const routes = {
     if (!(await listStyles()).includes(styleName)) return send(res, 400, { error: `unknown style "${styleName}"` });
 
     const id = randomUUID();
-    const job = await createJob({ id, ext, styleName, language: url.searchParams.get('language') || undefined,
+    const layout = url.searchParams.get('layout') || undefined;
+    if (layout && !['9:16', 'original'].includes(layout)) return send(res, 400, { error: 'layout must be 9:16 or original' });
+    const job = await createJob({ id, ext, styleName, layout, language: url.searchParams.get('language') || undefined,
       keyterms: url.searchParams.get('keyterms')?.split(',').map(s => s.trim()).filter(Boolean) });
     let size = 0;
     try {
@@ -88,7 +90,7 @@ const routes = {
   },
 
   'GET /api/jobs/:id': (req, res, url, job) => send(res, 200, {
-    state: job.state, meta: job.meta, words: job.words, phrases: job.phrases, style: job.styleName,
+    state: job.state, meta: job.meta, words: job.words, phrases: job.phrases, style: job.styleName, warnings: job.warnings ?? [],
     previewUrl: `/jobs/${job.id}/index.html?preview`,
   }),
 
@@ -104,6 +106,14 @@ const routes = {
       if (w.role) job.words[i].role = w.role; else delete job.words[i].role;
     });
     start(job, 'chunk');
+    send(res, 202, { ok: true });
+  },
+
+  // cut-outs that failed left no cached file, so this re-tries exactly those windows
+  'POST /api/jobs/:id/retry-matte': (req, res, url, job) => {
+    if (job.state?.status === 'running') return send(res, 409, { error: 'job is still running' });
+    if (!job.phrases) return send(res, 409, { error: 'nothing to retry yet' });
+    start(job, 'matte');
     send(res, 202, { ok: true });
   },
 

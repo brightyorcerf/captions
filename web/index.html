@@ -26,6 +26,11 @@
         <option value="eclipse">eclipse</option>
         <option value="glido">glido</option>
       </select>
+      <select name="layout" aria-label="Output layout">
+        <option value="">style default</option>
+        <option value="9:16">9:16 vertical</option>
+        <option value="original">original frame</option>
+      </select>
       <button type="submit" class="go" disabled>Caption</button>
     </form>
 
@@ -41,6 +46,10 @@
     </header>
 
     <p class="status mono" id="status" role="status"></p>
+    <div class="warn" id="warnings" role="alert" hidden>
+      <ul></ul>
+      <button class="ghost" id="retry-matte">Retry cut-out</button>
+    </div>
     <ol class="steps mono" id="steps">
       <li data-step="audio">extract audio</li>
       <li data-step="transcribe">transcribe</li>
