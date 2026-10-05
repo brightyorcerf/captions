@@ -1,149 +1,177 @@
 # captions
 
-Upload a video, get scroll-stopping captions back as an MP4. The **Default** look is measured from the Eclipse reference reel and puts key words behind the speaker; **Custom** lets you pick the highlight colour, the caption font and whether words go behind the speaker.
-Built for Glido Labs' round-2 take-home.
+![The captions landing page](docs/hero.png)
+
+Upload a video, get scroll-stopping captions back as an MP4.
+
+Captions is a caption engine built for the Glido Labs round 2 take-home. It transcribes a video word by word, splits the words into short on-screen phrases, highlights each word as it is spoken, and renders the result with HyperFrames. There are two looks:
+
+- Default, measured from the Eclipse reference reel. Key words are set in a bold display font, and one big word every few seconds sits behind the speaker's head.
+- Custom, which is the default look with your own highlight colour, one of three caption fonts, and key words behind the speaker switched on or off.
 
 ```
-upload ─▶ ffmpeg ─▶ Scribe / Whisper ─▶ chunk + roles ─▶ matte ─▶ HyperFrames composition ─▶ MP4
-          (audio)   word timestamps     3–4 word lines   speaker   HTML + GSAP timeline
-                                        keywords,        cut-out   (same file previews
-                                        callouts         per callout in the browser)
+upload > ffmpeg > ElevenLabs Scribe or Whisper > phrases and key words > speaker cut-out > HyperFrames > MP4
+         audio    word timestamps                 3 to 4 word lines     only for big words  HTML + GSAP
 ```
 
-## Highlights
+## Most impressive parts of this project
 
-- **Text behind the speaker, on any video.** The reference's signature move is a giant keyword that the speaker's head eclipses. The pipeline cuts the speaker out *only* during callout windows (one model run, cached), extracts their outline every 1/10 s, and places each word against that outline: the head hides 55 % of a wide word's letters, and a narrow word tucks a third of itself behind the head. These are rules relative to the speaker, measured once on the reference, so they hold wherever the speaker stands and however they move.
-- **Never silently wrong.** If the cut-out fails, finds nobody, or finds the head too low, that word moves into the caption line as a keyword (never across the face) and the editor shows why, with a Retry button. `--strict` makes the CLI fail instead.
-- **Vertical by default.** Any landscape or square upload becomes a 1080×1920 frame cropped around the speaker's head, found from 12 sampled frames. `--layout original` keeps the source frame.
-- **Preview is the render.** The browser preview loads the exact HTML file HyperFrames renders, so what you approve is what you export.
-- **Styles are data, not code.** The default look is a `style.json` + `style.css` folder. **Custom** (highlight colour, one of three measured fonts, words behind the speaker on/off) is a validated override on top of it, from the upload form or the CLI. The brief's alternative look is a two-token edit.
-- **Every boundary comes from the transcript.** There are no frame numbers or hard-coded timings. Line limits come from video width and font metrics, so a 10-second portrait clip and a 3-minute landscape talk run through the same code.
-- **Hinglish done the way creators write it.** Scribe returns Hindi as Devanagari; `romanize.js` converts it to creator-style Latin. Its test fixture is every Hindi word of the reference reel, and all 55 match the reference's own captions.
-- **Fix it in the browser.** Click a word to correct it, right-click to make it a keyword or callout. Re-rendering costs no API call, and the transcript cache is keyed on audio, provider, language and keyterms.
-- **Deterministic, offline renders.** GSAP and fonts are pinned npm dependencies copied into each job, with no CDNs at render time. Generated compositions pass `hyperframes lint` with 0 errors and 0 warnings.
-- **Checked against the real thing, and against clips it was never tuned on.** The reference reel was compared frame by frame with the original (callouts within 4–20 px). `tools/check.mjs` checks the same rules on any composed job, and they pass on [a test set](#testing) of unseen clips.
-- **Careful with paid credits.** Every video is transcribed once (cached by audio hash). Anything over 5 minutes is refused unless you pass `--yes`, every paid call is logged with a running total, and the samples ship their transcripts so they run without a key.
+- Text behind the speaker works on any video, not just the reference. For each big word, the pipeline cuts the speaker out of the frame and records the outline of their head every tenth of a second. The word is then placed against that outline: the head covers 55 percent of a long word's height, and a short word such as a number tucks a third of its width behind the head. These rules were measured once on the reference and hold wherever the speaker stands and however they move.
+- The look was measured, not eyeballed. Fonts were identified by comparing pixels of words cut from the reference against candidate fonts, colours were sampled, and big-word timing and placement were tracked frame by frame. Our captions land within 4 to 20 pixels of the reference. The full spec is in [docs/eclipse-spec.md](docs/eclipse-spec.md).
+- It never fails silently. If the speaker cannot be cut out, nobody is found, or the head is too low or touches the top of the frame, that word moves into the caption line instead of covering the speaker's face, and the editor explains why and offers a retry.
+- Any video becomes a vertical 9:16 reel. The speaker's head is found in 12 sampled frames and the frame is cropped around it. Close-ups and videos with nobody in them are shown whole over a blurred fill instead of being cropped into an enlarged face.
+- It was tested on clips it was never tuned on. A rule checker runs on any rendered job, and it passes on three Creative Commons clips with very different framing (see Testing). The first run on those clips found five bugs, all fixed.
+- Hinglish is spelled the way creators write it. The transcriber returns Hindi in Devanagari script; a romanizer converts it to the Latin spellings creators use, and all 55 Hindi words in the reference match its own captions.
+- It is careful with paid credits. Each video is transcribed once and cached, anything over five minutes is refused unless confirmed, every paid call is logged with a running total, and the samples ship with their transcripts so they run without a key. Visitors can also paste their own ElevenLabs key on the website.
+- The preview is the render. The browser preview loads the same HTML file that HyperFrames renders, so what you approve is what you export. Renders are deterministic and work offline, because fonts and GSAP are pinned packages copied into each job.
+
+## Challenges faced during the project
+
+- The first version was called generic. A reviewer said the output did not match the reference closely enough. Instead of adjusting by eye, I measured the reference frame by frame. A description of the style from an AI vision model claimed Poppins, a gold highlight, grey inactive words and a thick black outline; the measurements contradicted all four, so it was not used.
+- Identifying the fonts. The first font comparison gave every candidate the same score, because fonts loaded from local file paths never actually rendered in the headless browser. Embedding the fonts directly in the test page fixed it, and Montserrat and Anton won clearly.
+- Placement that only worked on one video. The first text-behind-speaker version read the head position from a single frame and used fixed screen positions tuned to the reference. Rewriting it around the speaker's outline in every frame made it work on other framings. One measurement was also wrong at first: the reference's "12" is partly hidden by her head, so its visible width understated how far it tucks behind the head.
+- Renders that froze on an 8 GB laptop. Two separate causes looked like one problem. Cut-out clips declared durations with floating point tails (1.4000000000000021 seconds), so the renderer waited forever for a frame that did not exist. Separately, a single long-running Chrome grew until the machine ran out of memory. The fix was to declare durations in whole frames and to capture long videos in 10 second segments with a fresh browser for each.
+- Clips the system had never seen. Running three unfamiliar clips exposed a crop centred on the wall between two people, a close-up blown up into a giant face, a background-removal model that returns nothing for extreme close-ups, a video tool that rejected an unusual frame rate, and transcripts with several words sharing one timestamp, which meant those words were never highlighted on screen.
+- Fast talkers. When someone speaks quickly, a big word was visible for only half a second and its highlight flashed for a quarter of a second. Big words now stay on screen for at least 0.9 seconds, the shortest duration in the reference, while the caption line continues underneath.
+- Hindi transcription. The transcriber returns Hindi in Devanagari, while Hinglish reels are captioned in Latin script. The romanizer needed rules for silent vowels, long vowels at word ends, Hindi number words (barah becomes 12), and punctuation such as the danda.
+- Limited credits. Development reused cached transcripts wherever possible. Transcribing all three test clips cost 1.6 minutes of audio, once.
 
 ## Quick start
 
-Requires Node 22+ and ffmpeg/ffprobe on your `PATH`:
+You need Node 22 or later and ffmpeg on your PATH.
 
 | OS | Install ffmpeg |
 |---|---|
 | macOS | `brew install ffmpeg` |
-| Windows | `winget install Gyan.FFmpeg` (or unzip a [gyan.dev build](https://www.gyan.dev/ffmpeg/builds/) and add its `bin` to `PATH`) |
+| Windows | `winget install Gyan.FFmpeg`, or unzip a [gyan.dev build](https://www.gyan.dev/ffmpeg/builds/) and add its bin folder to PATH |
 | Linux | `sudo apt install ffmpeg` |
 
 ```bash
 npm install
-cp .env.example .env           # add ELEVENLABS_API_KEY or OPENAI_API_KEY
-npm start                      # http://localhost:3030
+cp .env.example .env    # optional: add ELEVENLABS_API_KEY or OPENAI_API_KEY
+npm start               # http://localhost:3030
 ```
 
-No key in `.env`? Paste your ElevenLabs key on the upload form instead. It is sent in a request header with that upload only, kept in memory for that job, and never written to disk, logged or returned by the API.
+If there is no key in `.env`, paste an ElevenLabs key into the field on the upload page. The key is sent in a request header with that upload only, kept in memory for that job, and never written to disk, logged or sent back.
 
-Batch / headless mode uses the same pipeline:
+On the upload page, choose Default or Custom, and 9:16 vertical or the original frame. After the first render, click a word in the transcript to fix its spelling, or right-click it to cycle between normal, key word and big word behind the speaker. Re-rendering does not call the transcription API again.
+
+## Command line
+
+The CLI runs the same pipeline without the browser.
 
 ```bash
 npm run caption -- samples/input/*.mp4 --out out/
 npm run caption -- talk.mp4 --language hi --keyterms "Glido,FramesNFlights"
-npm run caption -- talk.mp4 --accent "#ff4d6d" --font poppins --no-behind   # custom look
-npm run caption -- wide.mp4 --layout original      # keep a landscape frame
+npm run caption -- talk.mp4 --accent "#ff4d6d" --font poppins --no-behind
+npm run caption -- wide.mp4 --layout original
 ```
 
 | Flag | Effect |
 |---|---|
-| `--keyterms` | Brand names: spelled right by the transcriber, always shown as in-line keywords, never behind the speaker |
-| `--layout 9:16|original` | Defaults to 9:16, cropped around the speaker |
-| `--accent`, `--font`, `--no-behind` | Custom look: highlight colour (`#rrggbb`), caption font (`montserrat|inter|poppins`), no words behind the speaker |
-| `--yes` | Allow sending more than `MAX_STT_MINUTES` (default 5) of audio to the paid API |
-| `--strict` | Exit non-zero if any callout could not go behind the speaker |
-| `--no-render` | Stop after composing (for `hyperframes snapshot` or `tools/check.mjs`) |
+| `--keyterms` | Brand names. They are spelled correctly by the transcriber, always shown as in-line key words, and never placed behind the speaker. |
+| `--layout 9:16` or `--layout original` | The default is 9:16, cropped around the speaker. |
+| `--accent`, `--font`, `--no-behind` | Custom look: highlight colour as `#rrggbb`, caption font (`montserrat`, `inter` or `poppins`), and no words behind the speaker. |
+| `--yes` | Allows sending more than `MAX_STT_MINUTES` (default 5) of audio to the paid API. |
+| `--strict` | Exits with an error if any big word could not go behind the speaker. |
+| `--no-render` | Stops after building the composition, for inspection with `tools/check.mjs` or `hyperframes snapshot`. |
 
-A transcript file next to the video (`clip.transcript.json`) is used instead of the API.
-
-Tests: `npm test`. They cover the chunker (10-second, fast-talker and 3-minute transcripts, pauses, orphans, callout-aware limits), keyword picking (Hinglish stopwords, callout spacing, brands, one keyword per sentence) and the romanizer. See [Testing](#testing) for the checks on real video.
+If a file named `clip.transcript.json` sits next to `clip.mp4`, it is used instead of the API. Outputs are named `<video>.default.mp4`, or `<video>.custom.mp4` when a custom setting is passed.
 
 ## How it works
 
-| Step | File | Notes |
+| Step | File | What it does |
 |---|---|---|
-| Upload | `server/index.js` | Raw-body streaming upload with type and size checks. Plain `node:http`, no framework. |
-| Audio | `server/pipeline.js` | `ffprobe` reads size, duration and phone rotation. `ffmpeg` extracts 16 kHz mono audio, about 10x smaller than the video. |
-| Transcribe | `server/transcribe.js` | Adapters normalise ElevenLabs Scribe v2 and OpenAI Whisper to `{text,start,end}[]`. Results are cached by content hash. |
-| Chunk | `server/chunk.js` | Pure function, unit-tested. See below. |
-| Roles | `server/roles.js` | Picks keyword and callout words. Pure function, unit-tested. The editor can override every pick. |
-| Matte | `server/pipeline.js` | Cuts the speaker out, but only during callout windows, using `hyperframes remove-background`. Cached. |
-| Compose | `server/pipeline.js` | Writes a HyperFrames project: source `<video>` + caption layer + JSON data + style. |
-| Animate | `runtime/captions.js` | Builds one paused GSAP timeline from timestamps. The renderer seeks it frame by frame. |
-| Render | `hyperframes render` | Headless Chrome + FFmpeg. Deterministic output. |
+| Upload | `server/index.js` | Streams the upload to disk with type and size checks. Plain `node:http`, no framework. |
+| Audio | `server/pipeline.js` | Reads size, duration and rotation with ffprobe, extracts 16 kHz mono audio, and crops to 9:16 around the speaker. |
+| Transcribe | `server/transcribe.js` | Calls ElevenLabs Scribe v2 or OpenAI Whisper and returns word timestamps. Results are cached by audio hash. |
+| Chunk | `server/chunk.js` | Splits words into on-screen phrases. |
+| Roles | `server/roles.js` | Picks key words and big words. Every pick can be changed in the editor. |
+| Cut out | `server/pipeline.js` | Removes the background around the speaker, only while a big word is on screen. |
+| Compose | `server/pipeline.js` | Writes a HyperFrames project: the source video, the caption layer, the data and the style. |
+| Animate | `runtime/captions.js` | Builds one paused GSAP timeline from the timestamps and places big words against the speaker's outline. |
+| Render | `hyperframes render` | Captures the page frame by frame in headless Chrome and encodes the MP4. |
 
-### Chunking
+### Phrases
 
-Every boundary comes from the transcript JSON. There are no frame numbers anywhere, so a 10-second clip and a 3-minute talk go through the same code.
+Every boundary comes from the transcript. There are no frame numbers, so a 10 second clip and a 3 minute talk run through the same code.
 
-1. Hard break on a pause > 350 ms, a sentence end (`.?!`), or a clause end (`,;:`) once the phrase has ≥ 3 words.
-2. Soft break when the phrase is full: 5 words, or wider than fits on the configured number of lines. `maxChars` is derived from video width, font scale and the style's average glyph width, so portrait and landscape get different limits.
-3. Never end a line on a weak word (`the`, `of`, `to` …). It is carried into the next phrase.
-4. Rebalance orphans after a soft break: `[5][1]` becomes `[3][3]`, or the two are merged if they fit.
-5. A phrase shows from its first word to `last word end + hold`, but is always cleared before the next phrase starts.
+1. A phrase ends at a pause longer than 350 ms, at the end of a sentence, or at a comma once it has at least three words.
+2. A phrase also ends when it is full: four words, or as many characters as fit on one line. The character limit comes from the video width, the font size and the font's measured average glyph width.
+3. A line never ends on a weak word such as "the" or "of"; that word moves to the next phrase.
+4. A short leftover phrase is rebalanced with the one before it.
+5. Words that the transcriber returns with the same timestamp are spread one frame apart, so each is highlighted on screen.
 
-### The default style
+### The default look
 
-Measured from the reference reel, not eyeballed: fonts identified by pixel-overlap scoring, colours sampled, callout timing and placement tracked frame by frame. The full spec, the method and an A/B against the reference are in **[docs/eclipse-spec.md](docs/eclipse-spec.md)**. The name comes from the signature move: **a giant keyword sits behind the speaker, and their head eclipses it.**
+| Element | Measured from the reference |
+|---|---|
+| Caption line | Montserrat Bold at 6.94 percent of the short edge, white, faint soft shadow, no outline, one to four words, appears and disappears without animation |
+| Active word | Yellow `#FEE300` with a translucent yellow box 0.2 em around the letters |
+| Key words | Anton in capitals, 1.11 times the line size, at least one per sentence of three or more words. Brand names are always key words. |
+| Big words | Anton in capitals at 29.8 percent of the frame width, left aligned, behind the speaker's head. About one every 10 seconds, nouns, English words or numbers, never a brand. On screen for the length of their phrase and at least 0.9 seconds. |
+| Layout | 1080 by 1920, cropped around the speaker |
 
-| Element | Reference (measured) | Token |
+The full measurements, the method and the comparison with the reference are in [docs/eclipse-spec.md](docs/eclipse-spec.md).
+
+### Text behind the speaker
+
+Background removal is the slowest step, so it is kept small:
+
+- Only the moments when a big word is on screen are processed, which is a few seconds per minute of video.
+- All of those moments go through one model run, because the model takes about 15 seconds to start.
+- The model runs at half resolution and 15 fps. Its mask is then applied to the full resolution frames, so the speaker stays sharp.
+- Results are cached, so editing a word re-renders without repeating the cut-out.
+
+The speaker's outline from each cut-out goes into the composition, and `runtime/captions.js` places each word against it once the font has loaded. If the cut-out fails, finds nobody, or finds the head below the middle of the frame or touching its top edge, the word is shown in the caption line instead and the job carries a warning.
+
+### Custom look
+
+Custom is not a separate style. It is a set of overrides on the default style, checked on the server before the upload is read (`customizeStyle` in `server/pipeline.js`).
+
+| Setting | Effect | Allowed values |
 |---|---|---|
-| Caption line | Montserrat 700, 6.94 % of the short edge, pure white, faint soft shadow, no stroke, 1–4 words, **hard cut** in and out | `fontScale`, `position`, `chunk`, `motion.in/out: 0` |
-| Active word | `#FEE300` text + translucent yellow box 0.2 em around the ink, no pop | `colors.active`, `highlight`, `motion` |
-| Keywords | Anton caps inside the line, 1.11 em, 0.025 em tracking (MANGWAYA, LAZULI). At least one per sentence of 3+ words; brand names (ASTROTALK) always | `roles.emphasisMin`, `--keyterms`, `style.css` |
-| Callout | Anton caps at a fixed 0.298 × width, left-anchored, shrunk only past 90.6 %; numbers and short words 1.22× and beside the head. **Behind the speaker's head**: the head hides 55 % of the letters' height. Lives exactly as long as its phrase, hard cut, white → yellow + box while spoken. About one per 10 s, English words or numbers only in Hinglish (*barah* → **12**), never a brand. | `callout.*`, `roles.callout*` |
-| Layout | 9:16, 1080×1920, cropped around the speaker | `layout` |
+| Highlight | Colour of the active word and its box | `#rrggbb` |
+| Font | Font of the caption line. Key words and big words stay in Anton. | Montserrat, Inter or Poppins. Each is bundled and its glyph width measured, so line breaking stays correct. |
+| Key words behind speaker | When off, there are no big words and no cut-out | On or off |
 
-The brief's suggested variant (1.2x pop, previous word dimmed to 50%) is a two-token change: `motion.activeScale: 1.2`, `motion.dimOpacity: 0.5`.
-
-#### Text behind the subject
-
-Matting is the slowest step, so it is kept small:
-
-- **Only callout windows** are matted, which is a few seconds per minute of video.
-- **All windows go through one model run.** The u2net model takes about 15 s just to start, so each callout does not pay that again.
-- It runs at **half resolution and 15 fps**. Its alpha is then merged onto the full-resolution 30 fps frames with `ffmpeg alphamerge`, so the speaker stays sharp. Edges can lag the head by up to 1/30 s, which is not noticeable behind a word.
-- The result is **cached per window**, so editing a word re-renders without re-matting.
-- From each cut-out, the **speaker's outline** (top of the person per column, every 1/10 s) goes into the composition. `runtime/captions.js` places each word against it once the font has loaded (rules in [docs/eclipse-spec.md](docs/eclipse-spec.md#as-rules-for-any-video)), checks every sampled frame, and reports how much of each word is hidden.
-
-On a 4-core i5, one 2.7 s callout takes about 41 s and two take about 61 s. If matting fails, finds no person, or finds the head below mid-frame or touching the top edge, the word is shown in the caption line instead, and the job carries a warning (editor banner with Retry; `--strict` in the CLI).
+The default look itself is a folder, `styles/default`, holding `style.json` (sizes, colours, timings, placement rules) and `style.css`. Changing the look means editing those files, not the code. The brief's alternative look, with a 1.2x pop and the previous word dimmed to 50 percent, is a change to two values: `motion.activeScale` and `motion.dimOpacity`.
 
 ### Hinglish
 
-Scribe may return Hindi speech in Devanagari script. Hinglish reels, the reference included, are captioned in Latin script. When Devanagari appears, `server/romanize.js` transliterates it in the creator spelling style (मैंने → *maine*, मंगवाया → *mangwaya*, वालों → *walon*). It uses a dictionary for common words and rule-based schwa deletion for the rest, and it has tests.
+When the transcript contains Devanagari, `server/romanize.js` converts it to the Latin spellings creators use, for example मैंने to maine, मंगवाया to mangwaya and वालों to walon. It combines a dictionary of common words with rules for silent vowels, and its tests include every Hindi word in the reference.
 
-## Styles are data
+## Testing
 
-A style is a folder in `styles/`:
+There are three layers, from cheapest to most realistic.
 
-- `style.json`: fonts, font scale, glyph width, placement per orientation, chunk limits, colours, glow and motion timings
-- `style.css`: look (font family, stroke, background, casing)
+1. Unit tests (`npm test`, 30 tests) cover phrase splitting, key word picking, the romanizer, timestamp clean-up and custom style validation. They need no video and no API key.
+2. Rule checks (`node tools/check.mjs jobs/<id>`) load a composed job in headless Chrome and check rules that hold for any video:
+   - every big word is partly hidden by the speaker in every sampled frame, but never mostly hidden;
+   - every word that could not go behind the speaker is listed with the reason;
+   - all text stays inside the frame, and big words stay clear of the caption line;
+   - at each word's timestamp, exactly that word is highlighted;
+   - every sentence of three or more words has a key word.
+3. A pixel comparison with the reference (`tools/measure/abtest.mjs` and `hyperframes snapshot --against`) reports how far our text lands from the reference's.
 
-Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from the matching `@fontsource/*` npm package. They are copied into each job along with GSAP, so renders need no network and can't change when a CDN does.
+### Unseen clips
 
-**Custom** is not another folder: it is an override on the default style, checked on the server before the upload is read (`customizeStyle` in `server/pipeline.js`):
+The rules were tuned on the reference only and then run unchanged on clips with different framing. The clips are Creative Commons footage from Wikimedia Commons and are not committed:
 
-| Setting | Effect | Allowed |
-|---|---|---|
-| Highlight | active word colour and its translucent box | `#rrggbb` |
-| Font | caption line font; keywords and callouts stay Anton | Montserrat, Inter, Poppins: bundled, with each one's average glyph width measured so line breaking stays right |
-| Words behind speaker | off skips the speaker cut-out entirely | on / off |
+- [Jacob Markstrom interview](https://commons.wikimedia.org/wiki/File:Jacob_Markstrom_interview_(1).webm), by rinkside93, CC BY 3.0
+- [Interview with Jeff Nippard](https://commons.wikimedia.org/wiki/File:Interview_with_Jeff_Nippard_%E2%80%93_Science_communication_and_neck_training_(science-based_bodybuilding).webm), by JPS Health & Fitness, CC BY 3.0
+- [Wikipedia 20, Darya and Avner](https://commons.wikimedia.org/wiki/File:Wikipedia_20_-_Darya_%26_Avner.webm), by the Wikimedia Foundation, CC BY-SA 3.0
 
-## Samples
+| Clip | What makes it hard | 9:16 result | Big words behind the speaker | Highlight sync | Key words |
+|---|---|---|---|---|---|
+| Reference, reframed to 1920 by 1080 with the speaker off centre | Landscape, speaker off centre | Cropped on her head | 5 of 5, 12 to 36 percent hidden | 136 of 136 | 11 of 11 |
+| Markstrom, 640 by 360 | Extreme close-up, head cut off by the top edge | Whole frame over a blurred fill | 0 of 4. All moved to the line with a warning, because there is no room above the head. | 158 of 158 | 6 of 6 |
+| Nippard, 854 by 480 | Two people side by side, overlapping speech | Cropped on one person | 4 of 4, 9 to 15 percent hidden | 167 of 167 | 16 of 16 |
+| Darya and Avner, 15 seconds | Mostly cutaway shots and screen captures | Cropped on the speaker | 1 of 1 | 37 of 37 | 4 of 4 |
 
-`samples/input/` holds source clips and `samples/output/` the rendered results. The landing page lists whatever is in `samples/output/`.
+### Checking against the reference
 
-`interview-two-people` and `interview-cutaways` are renders of Creative Commons interviews from the [test set](#testing): landscape sources cropped to 9:16 around the speaker, with words behind the head (credits in [samples/CREDITS.md](samples/CREDITS.md)). `samples/input/synthetic-portrait.mp4` is a generated clip (macOS `say` speech over a gradient) with its transcript next to it, so the full pipeline runs without a key.
-
-The CLI names outputs `<video>.default.mp4`, or `<video>.custom.mp4` when a custom setting is passed.
-
-**Reference check.** The Eclipse reference reel (50 s, Hinglish, already captioned) is client footage, so it is kept out of the repo. Drop it in `reference/` (gitignored) and run:
+The Eclipse reference reel is client footage, so it is not in the repo. Put it in `reference/` (gitignored) and run:
 
 ```bash
 npm run caption -- reference/eclipse.mp4 --keyterms "Astrotalk" --no-render
@@ -151,65 +179,35 @@ node tools/measure/abtest.mjs jobs/<job-id> reference/eclipse.mp4 22.9,27.0,28.9
 npx hyperframes snapshot jobs/<job-id> --at 22.9,28.9,47.9 --against reference/eclipse.mp4
 ```
 
-`--no-render` stops after composing, which is enough to compare. `abtest.mjs` reports how far our text lands from the reference's, in pixels. `snapshot --against` writes `render | reference` pair sheets to look at. On this reel:
+On the reference, every Hindi word is spelled as the reference spells it, the caption line lands within 5 pixels of the reference, and big words land within 4 to 20 pixels, behind her head. Three of the five big words are the same words at the same moments (PISCES, SPECIFICALLY and 12). The reference chose OBSIDIAN and TIGER for the other two; any word can be changed in the editor.
 
-- every Hindi word is spelled the way the reference spells it (Scribe returns Devanagari, `romanize.js` converts it);
-- the caption line lands within 5 px of the reference, and callouts within 3–13 px in position and 3 px in height, behind the speaker's head (table in [docs/eclipse-spec.md](docs/eclipse-spec.md#ab-result));
-- 3 of the 5 callouts are the same words at the same moments (PISCES, SPECIFICALLY, 12). The other two are an editor's taste: the reference picked OBSIDIAN and TIGER. Right-click a word in the editor to change it.
+## Samples
 
-## Testing
+`samples/output/` holds the renders shown on the landing page. Both are Creative Commons interviews from the test set, cropped to 9:16 with words behind the speaker. Credits are in [samples/CREDITS.md](samples/CREDITS.md).
 
-Three layers, from cheapest to most real:
-
-1. **Unit tests** (`npm test`): chunker, keyword picking, romanizer, timestamp clean-up. No video, no API.
-2. **Rule checks on any video** (`node tools/check.mjs jobs/<id>...`): loads the composed page in headless Chrome and checks rules that don't depend on the clip:
-   - every callout is partly hidden by the speaker in every sampled frame, never mostly hidden;
-   - every fallback is listed with its reason;
-   - all text stays inside the frame, and callouts stay clear of the caption line;
-   - at each word's timestamp, exactly that word is highlighted;
-   - every sentence of 3+ words has a keyword.
-3. **Pixel A/B against the reference** (`tools/measure/abtest.mjs`, `hyperframes snapshot --against`), see [Samples](#samples).
-
-**Unseen clips.** The rules were tuned on the reference only, then run unchanged on clips with different framing. The clips are Creative Commons footage from Wikimedia Commons, not committed: [Jacob Markstrom interview](https://commons.wikimedia.org/wiki/File:Jacob_Markstrom_interview_(1).webm) (rinkside93, CC BY 3.0), [Interview with Jeff Nippard](https://commons.wikimedia.org/wiki/File:Interview_with_Jeff_Nippard_%E2%80%93_Science_communication_and_neck_training_(science-based_bodybuilding).webm) (JPS Health & Fitness, CC BY 3.0), and [Wikipedia 20 – Darya & Avner](https://commons.wikimedia.org/wiki/File:Wikipedia_20_-_Darya_%26_Avner.webm) (Wikimedia Foundation, CC BY-SA 3.0).
-
-| Clip | What makes it hard | 9:16 | Callouts behind the speaker | Sync | Keywords |
-|---|---|---|---|---|---|
-| Reference, re-framed as 1920×1080 with the speaker off-centre | landscape, off-centre | cropped on her head | 5/5 (hidden 12–36 %) | 136/136 | 11/11 |
-| Markstrom, 640×360 | extreme close-up, head cut by the top edge | whole frame over a blurred fill | 0/4: all fell back to the line, with a warning each (no room above the head) | 158/158 | 6/6 |
-| Nippard, 854×480 | two people side by side, crosstalk | cropped on one person | 4/4 (hidden 9–15 %) | 167/167 | 16/16 |
-| Darya & Avner, 15 s | mostly cutaway footage and screen captures | cropped on the speaker | 1/1 | 37/37 | 4/4 |
-
-The first run of these clips found five bugs, all fixed:
-- a crop centred on the wall between two people;
-- an enlarged-face crop for a close-up;
-- a frame-sampling crash;
-- words with one shared timestamp that were never visible while highlighted;
-- a render stall caused by clip durations with float tails.
-
-Transcribing all three cost 1.6 minutes of API time, once.
+`samples/input/synthetic-portrait.mp4` is a generated clip, synthetic speech over a gradient, with its transcript next to it, so the full pipeline can run without an API key.
 
 ## Performance
 
-Measured on a 4-core Intel i5-7500 with 8 GB of RAM: rendering runs at about **4x the video's length** (8.8 s clip → 31–37 s). A 3-minute video takes about 12 minutes. Transcription takes a few seconds on top, and runs only once per video thanks to the cache. Matting adds about 15 s per second of callout (see above).
+On a 4-core Intel i7-1165G7 laptop with 8 GB of RAM running Windows, the 50 second reference renders in about 5 minutes, and a 40 second interview with four big words takes about 4 to 6 minutes including the cut-out. Removing the background costs roughly 15 to 45 seconds per second of big words on screen, depending on the machine. Transcription takes a few seconds and happens once per video.
 
-On a 4-core i7-1165G7 laptop with 8 GB of RAM (Windows): the 8.8 s sample renders in about 160 s. For the 50 s reference reel, matting its 7 callouts (16.7 s of video) took about 12 minutes, roughly 44 s per second of callout. With 8 GB or less, HyperFrames switches to its low-memory profile (one worker, sequential capture). One long-lived Chrome then grows until capture stalls, so clips over 20 s are captured in 10 s segments with a fresh browser each. The 50 s reference with five cut-out layers renders in about 5 minutes this way.
-
-Rendering runs in parallel across Chrome workers (`--workers auto`), so more cores means faster renders. HyperFrames' Lambda renderer is the next step for batch work.
+With 8 GB of RAM or less, HyperFrames uses one worker. A single long-running Chrome then grows until capture stalls, so videos longer than 20 seconds are captured in 10 second segments with a fresh browser each. More cores and memory mean faster renders, and HyperFrames' Lambda renderer is the next step for batch work.
 
 ## Security
 
-- API keys live only in `.env`, which is gitignored. `.env.example` documents them. Keys are read server-side and never reach the browser.
-- Uploads are limited by extension and size (1 GB), then validated with `ffprobe` (must have a video stream, ≤ 10 min).
-- Transcript edits can change word text and role only. Timings stay server-owned. Style names are checked against the `styles/` folder, and custom settings against fixed formats and a font allowlist, before the upload is read.
-- The server binds to `127.0.0.1` by default. Set `HOST` to expose it on a network.
-- Uploads are re-encoded to H.264 with 1 s keyframes before rendering. Phone HEVC and sparse-keyframe files otherwise freeze or fail to preview.
-- Generated compositions pass `hyperframes lint` with 0 errors and 0 warnings.
+- Server keys live only in `.env`, which is gitignored, and are never sent to the browser. A key typed on the website is used for that upload only and is never stored, logged or returned.
+- Uploads are limited by file type and size (1 GB), then checked with ffprobe: there must be a video stream, and the video must be 10 minutes or shorter.
+- Transcript edits can change word text and roles only. Timings stay on the server. Style names and custom settings are validated against fixed formats and a font allowlist before the upload is read.
+- The server listens on 127.0.0.1 by default. Set `HOST` to expose it on a network.
+- Uploads are re-encoded to H.264 with a keyframe every second, because phone HEVC files and files with sparse keyframes otherwise freeze or fail to preview.
+- Generated compositions pass `hyperframes lint` with no errors or warnings.
 
-## Decisions & trade-offs
+## Decisions and trade-offs
 
-| Choice | Why | Alternative |
+| Choice | Reason | Alternative |
 |---|---|---|
-| HyperFrames | Plain HTML + GSAP, deterministic renders, Apache-2.0. The preview page is the render input, so preview and export match. | Remotion: React-only and needs a company licence |
-| ElevenLabs Scribe v2 default | Word timestamps with punctuation, 90+ languages (Hindi for Glido's multilingual channels), keyterms for brand names, about $0.22/hr | Whisper: words come without punctuation, which is re-attached from the full text |
-| No framework, no DB, no queue | Single-user tool with six routes. Jobs live in memory and files on disk. | A queue + HyperFrames Lambda rendering when this needs to run for many channels at once |
-| Transcript cache | Editing a word or switching styles re-renders without another API call | — |
+| HyperFrames | Plain HTML and GSAP, deterministic renders, Apache 2.0 licence. The preview page is the render input, so preview and export match. | Remotion, which is React only and needs a company licence |
+| ElevenLabs Scribe v2 by default | Word timestamps with punctuation, more than 90 languages including Hindi, key terms for brand names, about $0.22 per hour | OpenAI Whisper, whose words come without punctuation, so it is re-attached from the full text |
+| No framework, database or queue | A single-user tool with a handful of routes. Jobs live in memory and files on disk. | A queue with HyperFrames Lambda rendering, for many channels at once |
+| Transcript cache | Editing a word or changing the look re-renders without another API call | None needed |
+| Fixed 9:16 crop instead of following the speaker | A steady frame reads better than a jittery one, and talking heads rarely cross the frame | A smoothed, panning crop that follows the active speaker |
