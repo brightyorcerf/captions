@@ -138,16 +138,32 @@ const HF_ENV = { ...process.env, HYPERFRAMES_SKIP_SKILLS: '1' };
 const hf = (...args) => run(process.execPath, [...HF_CLI, ...args],
   { env: HF_ENV, maxBuffer: 1 << 26 });
 
-/** Fraction of frame height where the subject's head starts, read from the matte's first frame. */
-async function headTop(file) {
-  const { stdout } = await run('ffmpeg', ['-v', 'error', '-c:v', 'libvpx-vp9', '-i', file, '-frames:v', '1',
-    '-vf', 'alphaextract,scale=108:192', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { encoding: 'buffer', maxBuffer: 1 << 20 });
-  for (let y = 0; y < 192; y++) {
-    let solid = 0;
-    for (let x = 0; x < 108; x++) if (stdout[y * 108 + x] > 128) solid++;
-    if (solid >= 3) return y / 192;
+/**
+ * The speaker's outline during a callout, as seen from above: for every column of a 108×192 grid, the
+ * first row the person occupies (192 = nobody in that column). One contour per 1/10 s, plus their
+ * per-column median. The runtime places each word against these, so "behind the head" holds wherever
+ * the speaker stands and however they move.
+ */
+const GRID = [108, 192];
+async function silhouette(file) {
+  const [gw, gh] = GRID;
+  const { stdout } = await run('ffmpeg', ['-v', 'error', '-c:v', 'libvpx-vp9', '-i', file, '-vf', `fps=10,alphaextract,scale=${gw}:${gh}`,
+    '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
+  const frames = [];
+  for (let o = 0; o + gw * gh <= stdout.length; o += gw * gh) {
+    frames.push(Array.from({ length: gw }, (_, x) => {
+      for (let y = 0; y < gh - 1; y++) if (stdout[o + y * gw + x] > 128 && stdout[o + (y + 1) * gw + x] > 128) return y;
+      return gh;
+    }));
   }
-  return null;
+  const median = Array.from({ length: gw }, (_, x) => frames.map(f => f[x]).sort((p, q) => p - q)[frames.length >> 1] ?? gh);
+  const top = Math.min(...median);
+  // the head: columns within 8% of the frame height of the highest point
+  const head = median.flatMap((y, x) => (y <= top + gh * 0.08 ? [x] : []));
+  return {
+    frames, median,
+    head: top < gh ? { top: top / gh, left: head[0] / gw, right: (head.at(-1) + 1) / gw } : null,
+  };
 }
 
 /**
@@ -155,21 +171,28 @@ async function headTop(file) {
  * can sit between the background and the person. Matting is the slow step, so: only callout windows,
  * all of them in ONE model run (model start-up is ~15s), at half resolution and 15 fps. The mask is
  * then applied to full-resolution frames so the person stays sharp. Results are cached per window.
+ *
+ * Never silent: a window whose cut-out failed, found nobody, or found the head too low for a word to
+ * sit behind it falls back to an in-line keyword, and the job carries a warning saying so.
  */
 const MATTE_FPS = 15;
+const HEAD_TOO_LOW = 0.5; // head top below mid-frame: a word behind it would collide with the caption line
 async function matte(job) {
   job.mattes = [];
+  job.warnings = [];
   if (!job.style.callout) return;
   const { dir, meta } = job;
   const q = t => Math.round(t * MATTE_FPS) / MATTE_FPS; // snap to the matte frame grid so offsets are exact
   const wins = job.phrases.flatMap((p, phrase) => {
     if (!p.callout) return [];
+    delete p.callout.fallback;
     const start = q(p.callout.start), duration = Math.max(q(p.callout.end) - start, 1 / MATTE_FPS);
     return [{ phrase, start, duration, src: `subject-${start.toFixed(3)}-${duration.toFixed(3)}.webm` }];
   });
   const todo = [];
   for (const w of wins) if (!(await exists(join(dir, w.src)))) todo.push(w);
 
+  let failure;
   if (todo.length) {
     const strip = join(dir, '.matte-in.mp4'), mask = join(dir, '.matte-mask.webm');
     const select = todo.map(w => `between(t,${w.start},${(w.start + w.duration - 0.001).toFixed(3)})`).join('+');
@@ -179,22 +202,37 @@ async function matte(job) {
       await hf('remove-background', strip, '-o', mask, '--quality', 'fast');
       let offset = 0;
       for (const w of todo) {
+        // the half-resolution mask is upscaled onto full-resolution frames; a 1.5 px blur hides the stair-stepping
         await run('ffmpeg', ['-y', '-v', 'error', '-ss', `${w.start}`, '-t', `${w.duration}`, '-i', join(dir, job.input),
           '-ss', `${offset}`, '-t', `${w.duration}`, '-c:v', 'libvpx-vp9', '-i', mask, '-filter_complex',
-          `[1:v]alphaextract,scale=${meta.width}:${meta.height}[a];[0:v]scale=${meta.width}:${meta.height}[v];[v][a]alphamerge,format=yuva420p`,
+          `[1:v]alphaextract,scale=${meta.width}:${meta.height},gblur=sigma=1.5[a];[0:v]scale=${meta.width}:${meta.height}[v];[v][a]alphamerge,format=yuva420p`,
           '-an', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '0', '-crf', '32', '-auto-alt-ref', '0',
           join(dir, w.src)]);
         offset += w.duration;
       }
     } catch (err) {
-      // ponytail: no matte -> callouts simply render in front of the speaker
-      console.warn(`[matte] skipped: ${err.message.split('\n')[0]}`);
+      failure = err.message.split('\n').find(Boolean) ?? 'unknown error';
+      console.warn(`[matte] failed: ${failure}`);
     } finally {
       await rm(strip, { force: true }); await rm(mask, { force: true });
     }
   }
+
   for (const w of wins) {
-    if (await exists(join(dir, w.src))) job.mattes.push({ ...w, headTop: await headTop(join(dir, w.src)) });
+    const p = job.phrases[w.phrase], word = job.words[p.callout.idx].text;
+    const sil = (await exists(join(dir, w.src))) ? await silhouette(join(dir, w.src)) : null;
+    const reason = !sil ? `the speaker cut-out failed (${failure ?? 'no output'})`
+      : !sil.head ? 'no person was found in the frame'
+      : sil.head.top > HEAD_TOO_LOW ? `the head is too low in the frame (${Math.round(sil.head.top * 100)}% down)`
+      : null;
+    if (reason) {
+      // shown in the line as a keyword rather than in front of the speaker's face
+      p.callout.fallback = reason;
+      job.warnings.push({ phrase: w.phrase, word, at: w.start, reason,
+        message: `"${word}" at ${w.start.toFixed(1)}s can't go behind the speaker: ${reason}. It is shown in the caption line instead.` });
+      continue;
+    }
+    job.mattes.push({ ...w, ...sil });
   }
 }
 
@@ -293,4 +331,12 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
     tell({ step, status: 'error', error: err.message });
     throw err;
   }
+}
+
+/** Re-opens a job folder written by an earlier run (transcript.json + source.mp4), e.g. to re-run from 'chunk'. */
+export async function loadJob(dir, { styleName = 'eclipse', keyterms, layout } = {}) {
+  const { words } = JSON.parse(await readFile(join(dir, 'transcript.json'), 'utf8'));
+  const style = await loadStyle(styleName);
+  return { id: dir.split(/[\/]/).at(-1), dir, input: 'source.mp4', styleName, style, keyterms, words,
+    layout: layout ?? style.layout ?? 'original', meta: await probe(join(dir, 'source.mp4')), state: null };
 }

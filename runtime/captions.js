@@ -12,16 +12,17 @@ const off = { opacity: m.dimOpacity, color: c.text, scale: 1 };
 if (glow) { on.textShadow = glow.on; off.textShadow = glow.off; }
 if (hl) { on.backgroundColor = hl.on; off.backgroundColor = hl.off; }
 
-function wordEl(parent, i) {
+function wordEl(parent, i, big = false) {
   const s = parent.appendChild(document.createElement('span'));
-  s.className = `word${words[i].role === 'emphasis' ? ' emphasis' : ''}`;
+  // a callout only reaches the line when it could not go behind the speaker: it stays a keyword there
+  s.className = `word${!big && (words[i].role === 'emphasis' || words[i].role === 'callout') ? ' emphasis' : ''}`;
   s.textContent = words[i].text;
   parent.append(' ');
   return s;
 }
 
 phrases.forEach((p, n) => {
-  const calloutIdx = p.callout?.idx;
+  const calloutIdx = p.callout && !p.callout.fallback ? p.callout.idx : undefined;
   const spans = new Map(); // word index -> element
   const blocks = [];
 
@@ -39,14 +40,11 @@ phrases.forEach((p, n) => {
   if (calloutIdx !== undefined) {
     const el = calloutLayer.appendChild(document.createElement('div'));
     el.className = 'callout';
-    spans.set(calloutIdx, wordEl(el, calloutIdx));
-    // fixed size (a fraction of the short edge), shrunk later only if the word is too wide; see fitCallouts
+    spans.set(calloutIdx, wordEl(el, calloutIdx, true));
+    // provisional size and place; placeCallout() fits it against the speaker's outline once fonts load
     el.style.fontSize = `${co.size * 100}vmin`;
-    if (co.left != null) Object.assign(el.style, { left: `${co.left * 100}%`, right: 'auto', textAlign: 'left' });
-    // baseline just below the top of the speaker's head, so the head eclipses the bottom of the letters
-    const head = mattes.find(x => x.phrase === n)?.headTop;
-    el.style.top = head == null ? `${co.fallbackY * 100}%` : `calc(${head * 100}% + ${co.headOverlap}em)`;
-    if (head != null) el.dataset.head = head;
+    el.style.top = `${co.fallbackY * 100}%`;
+    el.dataset.phrase = n;
     gsap.set(el, { yPercent: -100 });
     blocks.push([el, p.callout.end]);
   }
@@ -77,23 +75,97 @@ phrases.forEach((p, n) => {
 });
 tl.set({}, {}, duration); // timeline spans the whole video
 
-// Measured with the real font once it has loaded (sizes and positions only, never timing, so the
-// timeline above is unaffected): shrink callouts wider than co.width of the frame; narrow ones
-// (a number, a short word) sit beside the head rather than above it, so they drop lower.
-function fitCallouts() {
-  for (const el of calloutLayer.children) {
-    const span = el.firstChild, pad = parseFloat(getComputedStyle(span).paddingLeft) * 2;
-    const w = span.getBoundingClientRect().width - pad, max = innerWidth * co.width;
-    if (w > max) el.style.fontSize = `${(co.size * 100 * max) / w}vmin`;
-    if (!co.narrow || w >= innerWidth * co.narrow) continue;
-    // narrow: bigger, further in, level with the head instead of above it
-    el.style.fontSize = `${co.size * co.narrowScale * 100}vmin`;
-    el.style.left = `${co.narrowLeft * 100}%`;
-    const head = el.dataset.head;
-    if (head) el.style.top = `calc(${head * 100}% + ${co.headOverlapNarrow}em)`;
-  }
+// Callout placement, measured with the real font once it has loaded (sizes and positions only, never
+// timing, so the timeline above is unaffected). Everything is relative to THIS video's speaker outline:
+//  - size: fixed fraction of the short edge, shrunk only past co.width; narrow words (a number) 1.22x
+//  - x: long words start at the left margin and are shifted only if they would not reach the head;
+//    narrow ones go beside the head (left, unless the right has clearly more room) and tuck co.tuck of
+//    their width behind its edge
+//  - y: wide words: the head covers co.depth of the letters' height, measured against the median outline
+//    under the word and kept between co.minDepth and co.maxDepth in every sampled frame;
+//    narrow words sit beside the head, their top level with the top of the head (+ co.narrowOffset)
+//  - report: the share of the word's area the speaker hides, per frame
+// Each callout reports what it achieved in window.__calloutReport (read by tools/check.mjs).
+const ctx = document.createElement('canvas').getContext('2d');
+function ink(text, px, spacing) {
+  ctx.font = `${px}px Anton`;
+  ctx.letterSpacing = `${spacing * px}px`;
+  const t = ctx.measureText(text.toUpperCase());
+  return { left: t.actualBoundingBoxLeft, w: t.actualBoundingBoxLeft + t.actualBoundingBoxRight - spacing * px,
+    asc: t.actualBoundingBoxAscent, desc: t.actualBoundingBoxDescent };
 }
-if (co) document.fonts.ready.then(fitCallouts);
+
+function placeCallout(el, m) {
+  const W = innerWidth, H = innerHeight, span = el.firstChild, text = span.textContent;
+  const spacing = parseFloat(getComputedStyle(el).letterSpacing) / parseFloat(getComputedStyle(el).fontSize) || 0;
+  let px = co.size * Math.min(W, H), g = ink(text, px, spacing);
+  if (g.w > W * co.width) { px *= (W * co.width) / g.w; g = ink(text, px, spacing); }
+  const narrow = co.narrow && g.w < W * co.narrow;
+  if (narrow) { px *= co.narrowScale; g = ink(text, px, spacing); }
+  el.style.fontSize = `${px}px`;
+
+  const [gw, gh] = [m.median.length, 192], cw = W / gw, ch = H / gh;
+  const headL = m.head.left * W, headR = m.head.right * W, margin = co.left * W;
+  // left of the head (reading order) unless the right side has clearly more room
+  const side = W - headR > 1.3 * headL ? 'right' : 'left';
+  let x;
+  if (narrow) x = side === 'left' ? headL + co.tuck * g.w - g.w : headR - co.tuck * g.w;
+  // a long word must still run under the head, wherever the speaker stands
+  else x = Math.max(margin, Math.min(W - margin - g.w, headL + co.tuck * g.w - g.w));
+  x = Math.max(margin * 0.5, Math.min(W - margin * 0.5 - g.w, x));
+
+  // the outline under the word: its highest point decides how much of the letters is hidden
+  const c0 = Math.max(0, Math.floor(x / cw)), c1 = Math.min(gw, Math.ceil((x + g.w) / cw));
+  const under = f => Math.min(...f.slice(c0, c1)) * ch;
+  const inkH = g.asc + g.desc;
+  const depthAt = (bottom, f) => Math.max(0, Math.min(1, (bottom - under(f)) / inkH));
+  let bottom = narrow ? m.head.top * H + (1 + co.narrowOffset) * inkH : under(m.median) + co.depth * inkH;
+  // keep the word inside the frame
+  bottom = Math.max(bottom, H * co.top + inkH);
+  // the speaker moves: if some frames would leave the word uncovered or swallowed, nudge toward the middle
+  const depths = () => m.frames.map(f => depthAt(bottom, f)).sort((a, b) => a - b);
+  for (let k = 0; k < 20 && !narrow; k++) {
+    const d = depths();
+    if (d[0] < co.minDepth && d.at(-1) < co.maxDepth) bottom += inkH * 0.03;
+    else if (d.at(-1) > co.maxDepth && d[0] > co.minDepth) bottom -= inkH * 0.03;
+    else break;
+  }
+
+  // position the element so its ink lands at (x, bottom): left edge at the ink's left, baseline from the DOM
+  gsap.set(el, { yPercent: 0 });
+  Object.assign(el.style, { left: `${x + g.left}px`, right: 'auto', textAlign: 'left', top: '0px' });
+  const probe = el.appendChild(document.createElement('i'));
+  probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+  const baseline = probe.getBoundingClientRect().bottom - el.getBoundingClientRect().top;
+  probe.remove();
+  el.style.top = `${bottom - g.desc - baseline}px`;
+
+  // how much of the word the speaker hides in each sampled frame (the outline is solid below its top)
+  const hidden = f => {
+    let a = 0;
+    for (let c = c0; c < c1; c++) {
+      const span = Math.min(x + g.w, (c + 1) * cw) - Math.max(x, c * cw);
+      a += span * Math.max(0, bottom - Math.max(bottom - inkH, f[c] * ch));
+    }
+    return a / (g.w * inkH);
+  };
+  const stat = v => (v.sort((a, b) => a - b), { min: v[0], median: v[v.length >> 1], max: v.at(-1) });
+  const report = { word: text, side: narrow ? side : 'span', narrow, x: x / W, top: (bottom - inkH) / H, width: g.w / W,
+    depth: stat(m.frames.map(f => depthAt(bottom, f))), hidden: stat(m.frames.map(hidden)) };
+  // behind the speaker, yet readable: some of the word is hidden in every frame, never most of it
+  report.ok = report.hidden.min >= co.minHidden && report.hidden.max <= co.maxHidden;
+  window.__calloutReport.push(report);
+  el.dataset.hidden = report.hidden.median.toFixed(2);
+}
+
+window.__calloutReport = [];
+if (co) document.fonts.ready.then(() => {
+  for (const el of calloutLayer.children) {
+    const m = mattes.find(x => x.phrase === Number(el.dataset.phrase));
+    if (m?.head) placeCallout(el, m);
+  }
+  window.__calloutsPlaced = true;
+});
 
 window.__timelines = window.__timelines || {};
 window.__timelines.main = tl;
