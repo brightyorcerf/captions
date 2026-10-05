@@ -10,6 +10,17 @@ upload ─▶ ffmpeg ─▶ Scribe / Whisper ─▶ chunk + roles ─▶ matte �
                                         callouts         per callout in the browser)
 ```
 
+## Highlights
+
+- **Text behind the speaker.** Eclipse's signature move is a giant keyword that the speaker's head eclipses. The pipeline cuts the speaker out *only* during callout windows, all in one model run at half resolution, then merges the mask onto full-resolution frames. Each window is cached, so edits re-render without re-matting.
+- **Preview is the render.** The browser preview loads the exact HTML file HyperFrames renders, so what you approve is what you export.
+- **Styles are data, not code.** Eclipse is a `style.json` + `style.css` folder. A second style (`glido`) needed zero code changes, and the brief's alternative look is a two-token edit.
+- **Every boundary comes from the transcript.** There are no frame numbers or hard-coded timings. Line limits come from video width and font metrics, so a 10-second portrait clip and a 3-minute landscape talk run through the same code.
+- **Hinglish done the way creators write it.** Scribe returns Hindi as Devanagari; `romanize.js` converts it to creator-style Latin. Its test fixture is every Hindi word of the reference reel, and all 55 match the reference's own captions.
+- **Fix it in the browser.** Click a word to correct it, right-click to make it a keyword or callout. Re-rendering costs no API call, and the transcript cache is keyed on audio, provider, language and keyterms.
+- **Deterministic, offline renders.** GSAP and fonts are pinned npm dependencies copied into each job, with no CDNs at render time. Generated compositions pass `hyperframes lint` with 0 errors and 0 warnings.
+- **Checked against the real thing.** The provided reference reel was run through the pipeline and compared frame by frame with the original (see [Samples](#samples)). Callout size, position, colour box and head occlusion line up with the reference.
+
 ## Quick start
 
 Requires Node 22+ and ffmpeg/ffprobe on your `PATH`:
@@ -105,9 +116,24 @@ Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from th
 
 `synthetic-portrait.mp4` is a generated clip: macOS `say` speech over a gradient. It exercises the full render path without real footage.
 
+**Reference check.** The Eclipse reference reel (50 s, Hinglish, already captioned) is client footage, so it is kept out of the repo. Drop it in `reference/` (gitignored) and run:
+
+```bash
+npm run caption -- reference/eclipse.mp4 --style eclipse --keyterms "Astrotalk" --out reference/out
+npx hyperframes snapshot jobs/<job-id> --at 2.6,12.5,25.5,47.5 --against reference/eclipse.mp4
+```
+
+The second command writes `render | reference` pair sheets at each timestamp. The input already has the reference captions burned in, so both caption sets appear together; what to compare is how they line up. On this reel:
+
+- every Hindi word is spelled the way the reference spells it (Scribe returns Devanagari, `romanize.js` converts it);
+- callouts land at the reference's size and height, in the yellow box, behind the speaker's head;
+- callout and keyword *choices* are heuristic, so they differ from the human editor's picks in places (we pick CRYSTALS where the editor picked TIGER). Right-click a word in the editor to change it.
+
 ## Performance
 
 Measured on a 4-core Intel i5-7500 with 8 GB of RAM: rendering runs at about **4x the video's length** (8.8 s clip → 31–37 s). A 3-minute video takes about 12 minutes. Transcription takes a few seconds on top, and runs only once per video thanks to the cache. Matting adds about 15 s per second of callout (see above).
+
+On a 4-core i7-1165G7 laptop with 8 GB of RAM (Windows): the 8.8 s sample renders in about 160 s. For the 50 s reference reel, matting its 7 callouts (16.7 s of video) took about 12 minutes, roughly 44 s per second of callout. With 8 GB or less, HyperFrames switches to its low-memory profile (one worker, sequential capture). A 50 s render with seven cut-out layers can then run out of memory, so use a machine with 16 GB for long clips with many callouts.
 
 Rendering runs in parallel across Chrome workers (`--workers auto`), so more cores means faster renders. HyperFrames' Lambda renderer is the next step for batch work.
 
