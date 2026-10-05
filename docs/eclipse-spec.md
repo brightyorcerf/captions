@@ -93,7 +93,7 @@ The reference has one speaker, centred. To work on any clip, the placement is st
 | Wide word: share of the letters' height hidden under the outline beneath the word | 55 % of the median outline; kept between 15 % and 85 % in every sampled frame when the speaker moves | `depth`, `minDepth`, `maxDepth` |
 | Narrow word: beside the head on the left, or the right if that side has clearly more room (> 1.3×) | 34 % of its width behind the head edge, top level with the head top | `tuck`, `narrowOffset` |
 | Readable: share of the word's area the speaker hides, in every sampled frame | 3–60 % (the reference: 12–36 %) | `minHidden`, `maxHidden` |
-| No cut-out, no person found, or head below mid-frame | the word becomes an in-line keyword and the job gets a warning | — |
+| No cut-out, no person found, head below mid-frame, or head touching the top edge | the word becomes an in-line keyword and the job gets a warning | — |
 
 `tools/check.mjs` reports these per callout for any composed job.
 

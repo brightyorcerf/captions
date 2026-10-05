@@ -108,7 +108,7 @@ Matting is the slowest step, so it is kept small:
 - The result is **cached per window**, so editing a word re-renders without re-matting.
 - From each cut-out, the **speaker's outline** (top of the person per column, every 1/10 s) goes into the composition. `runtime/captions.js` places each word against it once the font has loaded (rules in [docs/eclipse-spec.md](docs/eclipse-spec.md#as-rules-for-any-video)), checks every sampled frame, and reports how much of each word is hidden.
 
-On a 4-core i5, one 2.7 s callout takes about 41 s and two take about 61 s. If matting fails, finds no person, or finds the head below mid-frame, the word is shown in the caption line instead, and the job carries a warning (editor banner with Retry; `--strict` in the CLI).
+On a 4-core i5, one 2.7 s callout takes about 41 s and two take about 61 s. If matting fails, finds no person, or finds the head below mid-frame or touching the top edge, the word is shown in the caption line instead, and the job carries a warning (editor banner with Retry; `--strict` in the CLI).
 
 ### Hinglish
 
@@ -145,11 +145,42 @@ npx hyperframes snapshot jobs/<job-id> --at 22.9,28.9,47.9 --against reference/e
 - the caption line lands within 5 px of the reference, and callouts within 3–13 px in position and 3 px in height, behind the speaker's head (table in [docs/eclipse-spec.md](docs/eclipse-spec.md#ab-result));
 - 3 of the 5 callouts are the same words at the same moments (PISCES, SPECIFICALLY, 12). The other two are an editor's taste: the reference picked OBSIDIAN and TIGER. Right-click a word in the editor to change it.
 
+## Testing
+
+Three layers, from cheapest to most real:
+
+1. **Unit tests** (`npm test`): chunker, keyword picking, romanizer, timestamp clean-up. No video, no API.
+2. **Rule checks on any video** (`node tools/check.mjs jobs/<id>...`): loads the composed page in headless Chrome and checks rules that don't depend on the clip:
+   - every callout is partly hidden by the speaker in every sampled frame, never mostly hidden;
+   - every fallback is listed with its reason;
+   - all text stays inside the frame, and callouts stay clear of the caption line;
+   - at each word's timestamp, exactly that word is highlighted;
+   - every sentence of 3+ words has a keyword.
+3. **Pixel A/B against the reference** (`tools/measure/abtest.mjs`, `hyperframes snapshot --against`), see [Samples](#samples).
+
+**Unseen clips.** The rules were tuned on the reference only, then run unchanged on clips with different framing. The clips are Creative Commons footage from Wikimedia Commons, not committed: [Jacob Markstrom interview](https://commons.wikimedia.org/wiki/File:Jacob_Markstrom_interview_(1).webm) (rinkside93, CC BY 3.0), [Interview with Jeff Nippard](https://commons.wikimedia.org/wiki/File:Interview_with_Jeff_Nippard_%E2%80%93_Science_communication_and_neck_training_(science-based_bodybuilding).webm) (JPS Health & Fitness, CC BY 3.0), and [Wikipedia 20 – Darya & Avner](https://commons.wikimedia.org/wiki/File:Wikipedia_20_-_Darya_%26_Avner.webm) (Wikimedia Foundation, CC BY-SA 3.0).
+
+| Clip | What makes it hard | 9:16 | Callouts behind the speaker | Sync | Keywords |
+|---|---|---|---|---|---|
+| Reference, re-framed as 1920×1080 with the speaker off-centre | landscape, off-centre | cropped on her head | 5/5 (hidden 12–36 %) | 136/136 | 11/11 |
+| Markstrom, 640×360 | extreme close-up, head cut by the top edge | whole frame over a blurred fill | 0/4: all fell back to the line, with a warning each (no room above the head) | 158/158 | 6/6 |
+| Nippard, 854×480 | two people side by side, crosstalk | cropped on one person | 4/4 (hidden 9–15 %) | 167/167 | 16/16 |
+| Darya & Avner, 15 s | mostly cutaway footage and screen captures | cropped on the speaker | 1/1 | 37/37 | 4/4 |
+
+The first run of these clips found five bugs, all fixed:
+- a crop centred on the wall between two people;
+- an enlarged-face crop for a close-up;
+- a frame-sampling crash;
+- words with one shared timestamp that were never visible while highlighted;
+- a render stall caused by clip durations with float tails.
+
+Transcribing all three cost 1.6 minutes of API time, once.
+
 ## Performance
 
 Measured on a 4-core Intel i5-7500 with 8 GB of RAM: rendering runs at about **4x the video's length** (8.8 s clip → 31–37 s). A 3-minute video takes about 12 minutes. Transcription takes a few seconds on top, and runs only once per video thanks to the cache. Matting adds about 15 s per second of callout (see above).
 
-On a 4-core i7-1165G7 laptop with 8 GB of RAM (Windows): the 8.8 s sample renders in about 160 s. For the 50 s reference reel, matting its 7 callouts (16.7 s of video) took about 12 minutes, roughly 44 s per second of callout. With 8 GB or less, HyperFrames switches to its low-memory profile (one worker, sequential capture). A 50 s render with seven cut-out layers can then run out of memory, so use a machine with 16 GB for long clips with many callouts.
+On a 4-core i7-1165G7 laptop with 8 GB of RAM (Windows): the 8.8 s sample renders in about 160 s. For the 50 s reference reel, matting its 7 callouts (16.7 s of video) took about 12 minutes, roughly 44 s per second of callout. With 8 GB or less, HyperFrames switches to its low-memory profile (one worker, sequential capture). One long-lived Chrome then grows until capture stalls, so clips over 20 s are captured in 10 s segments with a fresh browser each. The 50 s reference with five cut-out layers renders in about 5 minutes this way.
 
 Rendering runs in parallel across Chrome workers (`--workers auto`), so more cores means faster renders. HyperFrames' Lambda renderer is the next step for batch work.
 
