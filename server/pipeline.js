@@ -270,10 +270,13 @@ async function matte(job) {
       else { p.callout.cut = c; break; }
     }
   }
-  const q = t => Math.round(t * MATTE_FPS) / MATTE_FPS; // snap to the matte frame grid so offsets are exact
+  // snap to the matte frame grid so offsets are exact, outwards: the cut-out must cover the word's whole
+  // time on screen. Rounding to the nearest step ended BEAUTIFULLY's cut-out at 9.25 s while the word stayed
+  // up to 9.29 s, a frame of the word in front of the face
+  const down = t => Math.floor(t * MATTE_FPS + 1e-6) / MATTE_FPS, up = t => Math.ceil(t * MATTE_FPS - 1e-6) / MATTE_FPS;
   const wins = job.phrases.flatMap((p, phrase) => {
     if (!p.callout) return [];
-    const start = q(p.callout.start), duration = Math.max(q(p.callout.end) - start, 1 / MATTE_FPS);
+    const start = down(p.callout.start), duration = Math.max(up(p.callout.end) - start, 1 / MATTE_FPS);
     // "modnet" in the name: cut-outs cached by an older model (u2net, which lost heads) are never reused
     return [{ phrase, start, duration, src: `subject-modnet-${start.toFixed(3)}-${duration.toFixed(3)}.webm` }];
   });
@@ -325,7 +328,11 @@ async function matte(job) {
     // declare what the file really holds, in whole frames (1.4000000000000021 s asked for a 43rd frame)
     const real = Number((await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join(dir, w.src)])).stdout);
     const k = Math.round(w.start * RENDER_FPS), n = Math.floor(real * RENDER_FPS + 1e-6);
-    job.mattes.push({ ...w, start: Number(((k + 0.001) / RENDER_FPS).toFixed(5)), duration: Number(((n - 0.5) / RENDER_FPS).toFixed(5)), ...sil });
+    const m = { ...w, start: Number(((k + 0.001) / RENDER_FPS).toFixed(5)), duration: Number(((n - 0.5) / RENDER_FPS).toFixed(5)), ...sil };
+    job.mattes.push(m);
+    // and the word is never up without its cut-out, whatever the rounding above or in the renderer
+    p.callout.start = Math.max(p.callout.start, m.start);
+    p.callout.end = Math.min(p.callout.end, m.start + m.duration);
   }
 }
 
