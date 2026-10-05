@@ -68,8 +68,12 @@ form.addEventListener('submit', async e => {
   go.disabled = true; go.textContent = 'Uploading…';
   try {
     const f = file.files[0];
-    const q = new URLSearchParams({ name: f.name, style: form.elements.style.value });
-    if (form.elements.layout.value) q.set('layout', form.elements.layout.value);
+    const q = new URLSearchParams({ name: f.name, style: 'default', layout: form.elements.layout.value });
+    if (form.elements.style.value === 'custom') {
+      q.set('accent', form.elements.accent.value);
+      q.set('font', form.elements.font.value);
+      q.set('behind', form.elements.behind.checked ? '1' : '0');
+    }
     const key = apiKey.value.trim();
     if (key) try { sessionStorage.setItem('elevenlabs-key', key); } catch {}
     const res = await fetch(`/api/jobs?${q}`, { method: 'POST', body: f, headers: key ? { 'x-elevenlabs-key': key } : {} });
@@ -83,6 +87,21 @@ form.addEventListener('submit', async e => {
     go.textContent = 'Caption';
   }
 });
+
+// ---------- custom look ----------
+// Default = the style measured from the reference. Custom = the same style with your highlight colour,
+// caption font and words-behind-speaker switch; the chip previews it live.
+const customEl = document.getElementById('custom');
+const chip = document.getElementById('chip');
+const FONT_FAMILY = { montserrat: 'Montserrat', inter: 'Inter', poppins: 'Poppins' };
+function syncCustom() {
+  customEl.hidden = form.elements.style.value !== 'custom';
+  chip.style.setProperty('--accent', form.elements.accent.value);
+  chip.style.setProperty('--line-font', `"${FONT_FAMILY[form.elements.font.value]}"`);
+  chip.classList.toggle('flat', !form.elements.behind.checked);
+}
+for (const name of ['style', 'accent', 'font', 'behind']) form.elements[name].addEventListener('input', syncCustom);
+syncCustom();
 
 // ---------- your own ElevenLabs key ----------
 // Shown on the landing page; required when the server has no key of its own. Kept in this tab only
@@ -105,7 +124,7 @@ fetch('/api/samples').then(r => r.json()).then(files => {
     const fig = document.createElement('figure');
     const v = Object.assign(document.createElement('video'), { src: `/samples/output/${f}#t=1.2`, controls: true, preload: 'metadata', playsInline: true });
     const cap = document.createElement('figcaption');
-    cap.textContent = f.replace(/(\.[\w-]+)?\.mp4$/, '').replace(/-/g, ' '); // "interview-cutaways.eclipse.mp4" → "interview cutaways"
+    cap.textContent = f.replace(/(\.[\w-]+)?\.mp4$/, '').replace(/-/g, ' '); // "interview-cutaways.mp4" → "interview cutaways"
     fig.append(v, cap);
     return fig;
   }));
@@ -123,10 +142,7 @@ const exportBtn = document.getElementById('export');
 const statusEl = document.getElementById('status');
 let job = null;
 
-// style picker lists whatever is in styles/: adding a style needs no UI change
-fetch('/api/styles').then(r => r.json()).then(names => {
-  form.elements.style.replaceChildren(...names.map(n => new Option(n, n, n === 'eclipse', n === 'eclipse')));
-}).catch(() => {});
+
 
 const samples = document.getElementById('samples');
 document.getElementById('back').onclick = () => { ws.hidden = true; landing.hidden = false; samples.hidden = !samples.querySelector('figure'); };

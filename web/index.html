@@ -6,7 +6,7 @@
   <title>Captions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Inter:wght@400;500;600;700&family=Montserrat:wght@700&family=Poppins:wght@700&family=Anton&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,20 +23,46 @@
         <span id="drop-text">Drop a video, or click to browse</span>
       </label>
       <select name="style" aria-label="Caption style">
-        <option value="eclipse">eclipse</option>
-        <option value="glido">glido</option>
+        <option value="default">Default</option>
+        <option value="custom">Custom</option>
       </select>
       <select name="layout" aria-label="Output layout">
-        <option value="">style default</option>
         <option value="9:16">9:16 vertical</option>
-        <option value="original">original frame</option>
+        <option value="original">Original frame</option>
       </select>
       <button type="submit" class="go" disabled>Caption</button>
     </form>
 
+    <!-- Custom: shown when the style picker is on "Custom" -->
+    <fieldset class="custom" id="custom" form="upload" hidden>
+      <legend class="sr-only">Custom look</legend>
+      <label class="field">
+        <span>Highlight</span>
+        <input type="color" name="accent" form="upload" value="#fee300" aria-label="Highlight colour">
+      </label>
+      <label class="field">
+        <span>Font</span>
+        <select name="font" form="upload" aria-label="Caption font">
+          <option value="montserrat">Montserrat</option>
+          <option value="inter">Inter</option>
+          <option value="poppins">Poppins</option>
+        </select>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" name="behind" form="upload" checked>
+        <span class="track" aria-hidden="true"></span>
+        <span>Words behind speaker</span>
+      </label>
+      <div class="chip" id="chip" aria-hidden="true">
+        <span class="big">BIG</span>
+        <span class="head"></span>
+        <span class="line">your <span class="lit">captions</span> <span class="kw">HERE</span></span>
+      </div>
+    </fieldset>
+
     <div class="key-row" id="key-row" hidden>
       <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Your ElevenLabs API key" aria-label="ElevenLabs API key">
-      <span class="hint" id="key-hint">Used for this upload only. Never stored on the server.</span>
+      <span class="key-hint" id="key-hint">Used for this upload only. Never stored on the server.</span>
     </div>
 
     <a class="samples" href="#samples" hidden>sample renders ↓</a>

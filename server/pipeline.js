@@ -43,6 +43,42 @@ export async function loadStyle(name) {
   return JSON.parse(await readFile(join(ROOT, 'styles', name, 'style.json'), 'utf8'));
 }
 
+/**
+ * Caption-line fonts a custom look can pick from. Each is bundled (@fontsource) and its average glyph
+ * width measured, because the chunker uses that width to decide how many words fit on one line.
+ */
+export const FONTS = {
+  montserrat: { family: 'Montserrat', font: 'montserrat/700', charWidth: 0.56 },
+  inter: { family: 'Inter', font: 'inter/700', charWidth: 0.515 },
+  poppins: { family: 'Poppins', font: 'poppins/700', charWidth: 0.544 },
+};
+
+const badRequest = msg => Object.assign(new Error(msg), { status: 400 });
+
+/**
+ * A custom look on top of a style: highlight colour, caption-line font, and words behind the speaker
+ * on or off. Keywords and callouts keep the style's display font. Returns a new style; throws on bad input.
+ */
+export function customizeStyle(style, { accent, font, behind } = {}) {
+  const s = structuredClone(style);
+  if (accent != null) {
+    if (!/^#[0-9a-f]{6}$/i.test(accent)) throw badRequest(`highlight colour must look like #fee300, got "${accent}"`);
+    const [r, g, b] = [1, 3, 5].map(k => parseInt(accent.slice(k, k + 2), 16));
+    s.colors = { ...s.colors, active: accent.toLowerCase() };
+    if (s.highlight) s.highlight = { on: `rgba(${r},${g},${b},0.30)`, off: `rgba(${r},${g},${b},0)` };
+  }
+  if (font != null) {
+    const f = FONTS[font];
+    if (!f) throw badRequest(`font must be one of ${Object.keys(FONTS).join(', ')}`);
+    const lineFonts = new Set(Object.values(FONTS).map(x => x.font));
+    s.fonts = [f.font, ...s.fonts.filter(x => !lineFonts.has(x))];
+    s.lineFamily = f.family;
+    s.charWidth = f.charWidth;
+  }
+  if (behind === false) delete s.callout; // no callouts: no cut-out, nothing behind the speaker
+  return s;
+}
+
 async function probe(file) {
   const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
     'stream=width,height:stream_side_data=rotation:stream_tags=rotate:format=duration', '-of', 'json', file]);
@@ -99,7 +135,9 @@ async function compose(job) {
   const runtime = await readFile(join(ROOT, 'runtime/captions.js'), 'utf8');
   await copyFile(join(ROOT, 'runtime/captions.css'), join(dir, 'captions.css'));
   await copyFile(join(ROOT, 'runtime/preview.js'), join(dir, 'preview.js'));
-  await copyFile(join(ROOT, 'styles', job.styleName, 'style.css'), join(dir, 'style.css'));
+  // a custom font replaces the caption line's family; the value comes from FONTS, never from the request
+  const css = await readFile(join(ROOT, 'styles', job.styleName, 'style.css'), 'utf8');
+  await writeFile(join(dir, 'style.css'), style.lineFamily ? `${css}\n.phrase { font-family: "${style.lineFamily}", sans-serif; }\n` : css);
   // bundled, not CDN: renders work offline and can't change under us
   await copyFile(join(ROOT, 'node_modules/gsap/dist/gsap.min.js'), join(dir, 'gsap.min.js'));
   await bundleFonts(dir, style.fonts);
@@ -323,13 +361,13 @@ function render(job, emit) {
 }
 
 /** Creates a job folder. `source` is copied in unless the caller already wrote `input<ext>` there. */
-export async function createJob({ id, ext, styleName = 'eclipse', source, language, keyterms, transcriptFile, allowLong, layout, apiKey }) {
+export async function createJob({ id, ext, styleName = 'default', custom, source, language, keyterms, transcriptFile, allowLong, layout, apiKey }) {
   const dir = join(JOBS, id);
   await mkdir(dir, { recursive: true });
   const input = `input${ext}`;
   if (source) await copyFile(source, join(dir, input));
-  const style = await loadStyle(styleName);
-  return { id, dir, input, styleName, style, language, keyterms, transcriptFile, allowLong, apiKey, layout: layout ?? style.layout ?? 'original', state: null };
+  const style = customizeStyle(await loadStyle(styleName), custom);
+  return { id, dir, input, styleName, style, custom, language, keyterms, transcriptFile, allowLong, apiKey, layout: layout ?? style.layout ?? 'original', state: null };
 }
 
 /** Runs the pipeline from `from` to `to`. Re-running from 'chunk' re-uses the (edited) transcript: no API call. */
@@ -412,7 +450,7 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
 }
 
 /** Re-opens a job folder written by an earlier run (transcript.json + source.mp4), e.g. to re-run from 'chunk'. */
-export async function loadJob(dir, { styleName = 'eclipse', keyterms, layout } = {}) {
+export async function loadJob(dir, { styleName = 'default', keyterms, layout } = {}) {
   const { words } = JSON.parse(await readFile(join(dir, 'transcript.json'), 'utf8'));
   spreadTimes(words);
   const style = await loadStyle(styleName);

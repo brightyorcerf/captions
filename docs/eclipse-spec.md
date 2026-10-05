@@ -2,7 +2,7 @@
 
 Everything below was measured from the Eclipse reference reel (1080×1920, 30 fps, 50.2 s), not eyeballed.
 The reel is client footage and is not committed. Put it at `reference/eclipse.mp4` to re-run the measurements.
-Values in `styles/eclipse/style.json` and `style.css` come from this page.
+Values in `styles/default/style.json` and `style.css` (the **Default** look) come from this page.
 
 ## How it was measured
 
@@ -102,7 +102,7 @@ The reference has one speaker, centred. To work on any clip, the placement is st
 `tools/measure/abtest.mjs` clones a composed job onto a black background with transparent cut-outs, snapshots it, and measures text ink boxes with the same thresholds as the reference.
 
 ```bash
-npm run caption -- reference/eclipse.mp4 --style eclipse --keyterms "Astrotalk" --no-render
+npm run caption -- reference/eclipse.mp4 --keyterms "Astrotalk" --no-render
 node tools/measure/abtest.mjs jobs/<job-id> reference/eclipse.mp4 22.9,27.0,28.9,46.0,47.9
 ```
 

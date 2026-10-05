@@ -28,7 +28,7 @@ export function chunk(words, opts = {}) {
         w.start - prev.end > o.maxGap ||                       // speaker paused
         /[.!?…]["')\]]*$/.test(prev.text) ||                     // sentence ended
         (/[,;:—–]["')\]]*$/.test(prev.text) && cur.length >= o.minWords); // clause ended
-      // words shown elsewhere (e.g. an Eclipse callout) still count as a word of the phrase,
+      // words shown elsewhere (e.g. a callout behind the speaker) still count as a word of the phrase,
       // but take up no room on the caption line ("jo [SPECIFICALLY]", "sare [12] rashiyon")
       const line = [...cur, i].filter(k => !o.free?.(k));
       const full = cur.length + 1 > o.maxWords || textLen(line.map(k => words[k])) > o.maxChars;

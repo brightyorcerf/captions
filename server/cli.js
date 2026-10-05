@@ -1,4 +1,4 @@
-// Headless batch mode: npm run caption -- a.mp4 b.mov --style eclipse --out out/
+// Headless batch mode: npm run caption -- a.mp4 b.mov --out out/
 import { access, copyFile, mkdir } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -7,7 +7,10 @@ import { createJob, listStyles, runJob } from './pipeline.js';
 const { values: o, positionals: files } = parseArgs({
   allowPositionals: true,
   options: {
-    style: { type: 'string', default: 'eclipse' },
+    style: { type: 'string', default: 'default' },
+    accent: { type: 'string' }, // custom look: highlight colour, e.g. "#ff4d6d"
+    font: { type: 'string' }, // custom look: caption-line font, montserrat | inter | poppins
+    'no-behind': { type: 'boolean', default: false }, // custom look: no words behind the speaker
     out: { type: 'string', default: 'out' },
     language: { type: 'string' },
     keyterms: { type: 'string' },
@@ -21,6 +24,7 @@ const { values: o, positionals: files } = parseArgs({
 if (!files.length) {
   console.log(`usage: npm run caption -- <video...> [--style ${(await listStyles()).join('|')}] [--out dir] [--language en]
        [--keyterms "Glido,FramesNFlights"] [--layout 9:16|original] [--yes] [--strict] [--no-render]
+       [--accent "#ff4d6d"] [--font montserrat|inter|poppins] [--no-behind]
 A transcript next to the video (clip.transcript.json) is used instead of the API.`);
   process.exit(1);
 }
@@ -36,6 +40,7 @@ for (const file of files) {
   try {
     const job = await createJob({
       id: `${name}-${t0}`, ext: extname(file).toLowerCase(), styleName: o.style, source: file,
+      custom: { accent: o.accent, font: o.font, behind: o['no-behind'] ? false : undefined },
       language: o.language, keyterms: o.keyterms?.split(',').map(s => s.trim()),
       transcriptFile: (await exists(sidecar)) ? sidecar : undefined, allowLong: o.yes, layout: o.layout,
     });
@@ -47,7 +52,8 @@ for (const file of files) {
     for (const w of job.warnings ?? []) console.warn(`\n⚠ ${w.message}`);
     if (o.strict && job.warnings?.length) throw new Error(`${job.warnings.length} warning(s) with --strict`);
     if (o['no-render']) { console.log(`\n✓ composed ${job.dir}`); continue; }
-    const dest = join(o.out, `${name}.${o.style}.mp4`);
+    const look = o.accent || o.font || o['no-behind'] ? 'custom' : o.style;
+    const dest = join(o.out, `${name}.${look}.mp4`);
     await copyFile(join(job.dir, 'output.mp4'), dest);
     console.log(`\n✓ ${dest}  (${job.meta.duration.toFixed(1)}s video, ${job.phrases.length} phrases, ${((Date.now() - t0) / 1000).toFixed(0)}s)`);
   } catch (err) {

@@ -1,6 +1,6 @@
 # captions
 
-Upload a talking-head video, get word-timed, animated captions back as an MP4. The default style, **Eclipse**, puts key words behind the speaker.
+Upload a video, get scroll-stopping captions back as an MP4. The **Default** look is measured from the Eclipse reference reel and puts key words behind the speaker; **Custom** lets you pick the highlight colour, the caption font and whether words go behind the speaker.
 Built for Glido Labs' round-2 take-home.
 
 ```
@@ -12,11 +12,11 @@ upload ─▶ ffmpeg ─▶ Scribe / Whisper ─▶ chunk + roles ─▶ matte �
 
 ## Highlights
 
-- **Text behind the speaker, on any video.** Eclipse's signature move is a giant keyword that the speaker's head eclipses. The pipeline cuts the speaker out *only* during callout windows (one model run, cached), extracts their outline every 1/10 s, and places each word against that outline: the head hides 55 % of a wide word's letters, and a narrow word tucks a third of itself behind the head. These are rules relative to the speaker, measured once on the reference, so they hold wherever the speaker stands and however they move.
+- **Text behind the speaker, on any video.** The reference's signature move is a giant keyword that the speaker's head eclipses. The pipeline cuts the speaker out *only* during callout windows (one model run, cached), extracts their outline every 1/10 s, and places each word against that outline: the head hides 55 % of a wide word's letters, and a narrow word tucks a third of itself behind the head. These are rules relative to the speaker, measured once on the reference, so they hold wherever the speaker stands and however they move.
 - **Never silently wrong.** If the cut-out fails, finds nobody, or finds the head too low, that word moves into the caption line as a keyword (never across the face) and the editor shows why, with a Retry button. `--strict` makes the CLI fail instead.
 - **Vertical by default.** Any landscape or square upload becomes a 1080×1920 frame cropped around the speaker's head, found from 12 sampled frames. `--layout original` keeps the source frame.
 - **Preview is the render.** The browser preview loads the exact HTML file HyperFrames renders, so what you approve is what you export.
-- **Styles are data, not code.** Eclipse is a `style.json` + `style.css` folder. A second style (`glido`) needed zero code changes, and the brief's alternative look is a two-token edit.
+- **Styles are data, not code.** The default look is a `style.json` + `style.css` folder. **Custom** (highlight colour, one of three measured fonts, words behind the speaker on/off) is a validated override on top of it, from the upload form or the CLI. The brief's alternative look is a two-token edit.
 - **Every boundary comes from the transcript.** There are no frame numbers or hard-coded timings. Line limits come from video width and font metrics, so a 10-second portrait clip and a 3-minute landscape talk run through the same code.
 - **Hinglish done the way creators write it.** Scribe returns Hindi as Devanagari; `romanize.js` converts it to creator-style Latin. Its test fixture is every Hindi word of the reference reel, and all 55 match the reference's own captions.
 - **Fix it in the browser.** Click a word to correct it, right-click to make it a keyword or callout. Re-rendering costs no API call, and the transcript cache is keyed on audio, provider, language and keyterms.
@@ -45,15 +45,17 @@ No key in `.env`? Paste your ElevenLabs key on the upload form instead. It is se
 Batch / headless mode uses the same pipeline:
 
 ```bash
-npm run caption -- samples/input/*.mp4 --style eclipse --out out/
-npm run caption -- talk.mp4 --style glido --language hi --keyterms "Glido,FramesNFlights"
+npm run caption -- samples/input/*.mp4 --out out/
+npm run caption -- talk.mp4 --language hi --keyterms "Glido,FramesNFlights"
+npm run caption -- talk.mp4 --accent "#ff4d6d" --font poppins --no-behind   # custom look
 npm run caption -- wide.mp4 --layout original      # keep a landscape frame
 ```
 
 | Flag | Effect |
 |---|---|
 | `--keyterms` | Brand names: spelled right by the transcriber, always shown as in-line keywords, never behind the speaker |
-| `--layout 9:16|original` | Eclipse defaults to 9:16, cropped around the speaker |
+| `--layout 9:16|original` | Defaults to 9:16, cropped around the speaker |
+| `--accent`, `--font`, `--no-behind` | Custom look: highlight colour (`#rrggbb`), caption font (`montserrat|inter|poppins`), no words behind the speaker |
 | `--yes` | Allow sending more than `MAX_STT_MINUTES` (default 5) of audio to the paid API |
 | `--strict` | Exit non-zero if any callout could not go behind the speaker |
 | `--no-render` | Stop after composing (for `hyperframes snapshot` or `tools/check.mjs`) |
@@ -86,7 +88,7 @@ Every boundary comes from the transcript JSON. There are no frame numbers anywhe
 4. Rebalance orphans after a soft break: `[5][1]` becomes `[3][3]`, or the two are merged if they fit.
 5. A phrase shows from its first word to `last word end + hold`, but is always cleared before the next phrase starts.
 
-### The Eclipse style
+### The default style
 
 Measured from the reference reel, not eyeballed: fonts identified by pixel-overlap scoring, colours sampled, callout timing and placement tracked frame by frame. The full spec, the method and an A/B against the reference are in **[docs/eclipse-spec.md](docs/eclipse-spec.md)**. The name comes from the signature move: **a giant keyword sits behind the speaker, and their head eclipses it.**
 
@@ -125,20 +127,26 @@ A style is a folder in `styles/`:
 
 Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from the matching `@fontsource/*` npm package. They are copied into each job along with GSAP, so renders need no network and can't change when a CDN does.
 
-`styles/glido` is a second style in Glido's brand colours. Adding it needed no code changes, and the UI style picker lists whatever folders exist.
+**Custom** is not another folder: it is an override on the default style, checked on the server before the upload is read (`customizeStyle` in `server/pipeline.js`):
+
+| Setting | Effect | Allowed |
+|---|---|---|
+| Highlight | active word colour and its translucent box | `#rrggbb` |
+| Font | caption line font; keywords and callouts stay Anton | Montserrat, Inter, Poppins: bundled, with each one's average glyph width measured so line breaking stays right |
+| Words behind speaker | off skips the speaker cut-out entirely | on / off |
 
 ## Samples
 
-`samples/input/` holds the source clips and `samples/output/` holds the rendered results, one per style. The landing page lists whatever is in `samples/output/`.
+`samples/input/` holds source clips and `samples/output/` the rendered results. The landing page lists whatever is in `samples/output/`.
 
 `interview-two-people` and `interview-cutaways` are renders of Creative Commons interviews from the [test set](#testing): landscape sources cropped to 9:16 around the speaker, with words behind the head (credits in [samples/CREDITS.md](samples/CREDITS.md)). `samples/input/synthetic-portrait.mp4` is a generated clip (macOS `say` speech over a gradient) with its transcript next to it, so the full pipeline runs without a key.
 
-Output files are named `<video>.<style>.mp4`: **eclipse** is the style measured from the reference reel, **glido** a second style in Glido's colours that shows a new look is just a config folder.
+The CLI names outputs `<video>.default.mp4`, or `<video>.custom.mp4` when a custom setting is passed.
 
 **Reference check.** The Eclipse reference reel (50 s, Hinglish, already captioned) is client footage, so it is kept out of the repo. Drop it in `reference/` (gitignored) and run:
 
 ```bash
-npm run caption -- reference/eclipse.mp4 --style eclipse --keyterms "Astrotalk" --no-render
+npm run caption -- reference/eclipse.mp4 --keyterms "Astrotalk" --no-render
 node tools/measure/abtest.mjs jobs/<job-id> reference/eclipse.mp4 22.9,27.0,28.9,46.0,47.9
 npx hyperframes snapshot jobs/<job-id> --at 22.9,28.9,47.9 --against reference/eclipse.mp4
 ```
@@ -192,7 +200,7 @@ Rendering runs in parallel across Chrome workers (`--workers auto`), so more cor
 
 - API keys live only in `.env`, which is gitignored. `.env.example` documents them. Keys are read server-side and never reach the browser.
 - Uploads are limited by extension and size (1 GB), then validated with `ffprobe` (must have a video stream, ≤ 10 min).
-- Transcript edits can change word text and role only. Timings stay server-owned. Style names are checked against the `styles/` folder.
+- Transcript edits can change word text and role only. Timings stay server-owned. Style names are checked against the `styles/` folder, and custom settings against fixed formats and a font allowlist, before the upload is read.
 - The server binds to `127.0.0.1` by default. Set `HOST` to expose it on a network.
 - Uploads are re-encoded to H.264 with 1 s keyframes before rendering. Phone HEVC and sparse-keyframe files otherwise freeze or fail to preview.
 - Generated compositions pass `hyperframes lint` with 0 errors and 0 warnings.

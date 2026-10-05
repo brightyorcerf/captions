@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { loadJob, runJob } from '../server/pipeline.js';
 
 const { values: o, positionals: [dir, from = 'chunk', to = 'compose'] } = parseArgs({ allowPositionals: true,
-  options: { style: { type: 'string', default: 'eclipse' }, keyterms: { type: 'string' } } });
+  options: { style: { type: 'string', default: 'default' }, keyterms: { type: 'string' } } });
 // a saved job holds the transcript, not phrases or cut-outs, so it can restart from 'chunk' at the latest
 if (!['transcribe', 'chunk'].includes(from)) { console.error('from must be transcribe or chunk'); process.exit(1); }
 const job = await loadJob(resolve(dir), { styleName: o.style, keyterms: o.keyterms?.split(',') });

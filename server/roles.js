@@ -1,4 +1,4 @@
-// Picks which words get special treatment in Eclipse:
+// Picks which words get special treatment in the default style:
 //   'callout'  – one big word at the top of the frame, behind the speaker
 //   'emphasis' – condensed uppercase inside the caption line
 // Heuristic only: long, capitalised or sentence-final content words win; brand names (keyterms) are always

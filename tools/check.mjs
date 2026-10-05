@@ -33,14 +33,15 @@ for (const dir of process.argv.slice(2).map(d => resolve(d))) {
   await page.waitForFunction(() => window.__calloutsPlaced || !document.querySelector('.callout'), { timeout: 30000 }).catch(() => {});
 
   const r = await page.evaluate(() => {
-    const { words, phrases } = JSON.parse(document.getElementById('captions-data').textContent);
+    const { words, phrases, style } = JSON.parse(document.getElementById('captions-data').textContent);
+    const lit = (() => { const e = document.body.appendChild(document.createElement('i')); e.style.color = style.colors.active; const c = getComputedStyle(e).color; e.remove(); return c; })();
     const tl = window.__timelines.main, W = innerWidth, H = innerHeight;
     const out = { callouts: window.__calloutReport ?? [], fallbacks: [], frame: [], sync: { ok: 0, bad: [] }, keywords: { sentences: 0, with: 0, missing: [] } };
     for (const p of phrases) if (p.callout?.fallback) out.fallbacks.push(`${words[p.callout.idx].text}: ${p.callout.fallback}`);
 
     const visible = () => [...document.querySelectorAll('.phrase, .callout')].filter(e => getComputedStyle(e).visibility === 'visible');
     const active = () => [...document.querySelectorAll('.word')].filter(s => s.closest('.phrase, .callout') && getComputedStyle(s.closest('.phrase, .callout')).visibility === 'visible'
-      && getComputedStyle(s).color === 'rgb(254, 227, 0)');
+      && getComputedStyle(s).color === lit);
     phrases.forEach(p => {
       tl.seek((p.start + p.end) / 2);
       const els = visible(), boxes = els.map(e => [e.className, e.firstElementChild ? [...e.children].reduce((b, s) => {
