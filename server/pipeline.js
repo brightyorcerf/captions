@@ -145,9 +145,9 @@ const hf = (...args) => run(process.execPath, [...HF_CLI, ...args],
  * the speaker stands and however they move.
  */
 const GRID = [108, 192];
-async function silhouette(file) {
+async function silhouette(file, fps = 10) {
   const [gw, gh] = GRID;
-  const { stdout } = await run('ffmpeg', ['-v', 'error', '-c:v', 'libvpx-vp9', '-i', file, '-vf', `fps=10,alphaextract,scale=${gw}:${gh}`,
+  const { stdout } = await run('ffmpeg', ['-v', 'error', '-c:v', 'libvpx-vp9', '-i', file, '-vf', `${fps > 1 ? `fps=${fps},` : ''}alphaextract,scale=${gw}:${gh}`,
     '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
   const frames = [];
   for (let o = 0; o + gw * gh <= stdout.length; o += gw * gh) {
@@ -179,7 +179,7 @@ const MATTE_FPS = 15;
 const HEAD_TOO_LOW = 0.5; // head top below mid-frame: a word behind it would collide with the caption line
 async function matte(job) {
   job.mattes = [];
-  job.warnings = [];
+  job.warnings = (job.warnings ?? []).filter(w => w.kind !== 'callout');
   if (!job.style.callout) return;
   const { dir, meta } = job;
   const q = t => Math.round(t * MATTE_FPS) / MATTE_FPS; // snap to the matte frame grid so offsets are exact
@@ -228,12 +228,52 @@ async function matte(job) {
     if (reason) {
       // shown in the line as a keyword rather than in front of the speaker's face
       p.callout.fallback = reason;
-      job.warnings.push({ phrase: w.phrase, word, at: w.start, reason,
+      job.warnings.push({ kind: 'callout', phrase: w.phrase, word, at: w.start, reason,
         message: `"${word}" at ${w.start.toFixed(1)}s can't go behind the speaker: ${reason}. It is shown in the caption line instead.` });
       continue;
     }
     job.mattes.push({ ...w, ...sil });
   }
+}
+
+/**
+ * UGC layout: any video wider than 9:16 becomes a 1080×1920 vertical frame, cropped around the speaker.
+ * The speaker is found by cutting the person out of ~12 frames spread over the clip (cheap: tiny frames,
+ * one model run) and taking the median head centre. The crop is fixed, not panning: a steady frame
+ * reads better than a jittery follow, and talking heads rarely cross the frame.
+ * Returns an ffmpeg filter, or null when the video is already vertical.
+ */
+const UGC = [1080, 1920];
+async function reframe(job) {
+  const { width: W, height: H, duration } = job.meta;
+  if (H / W >= 1.7) return null; // already 9:16 (or taller)
+  const cw = Math.min(W, Math.round((H * 9) / 16 / 2) * 2);
+  let centre = 0.5;
+  const strip = join(job.dir, '.reframe-in.mp4'), mask = join(job.dir, '.reframe-mask.webm');
+  try {
+    const n = 12;
+    await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-an', '-vf', `fps=${n / duration},scale=-2:360`,
+      '-frames:v', `${n}`, '-c:v', 'libx264', '-preset', 'veryfast', strip]);
+    await hf('remove-background', strip, '-o', mask, '--quality', 'fast');
+    const { frames } = await silhouette(mask, 1);
+    const centres = frames.map(f => {
+      const top = Math.min(...f);
+      if (top >= GRID[1]) return null;
+      const head = f.flatMap((y, x) => (y <= top + GRID[1] * 0.08 ? [x] : []));
+      return (head[0] + head.at(-1) + 1) / 2 / GRID[0];
+    }).filter(c => c != null).sort((a, b) => a - b);
+    if (!centres.length) throw new Error('no person found');
+    centre = centres[centres.length >> 1];
+  } catch (err) {
+    const reason = err.message.split('\n')[0];
+    job.warnings.push({ kind: 'reframe', reason,
+      message: `Couldn't find the speaker to frame the 9:16 crop (${reason}), so the centre of the frame is used.` });
+  } finally {
+    await rm(strip, { force: true }); await rm(mask, { force: true });
+  }
+  const x = Math.round(Math.max(0, Math.min(W - cw, centre * W - cw / 2)) / 2) * 2;
+  job.reframe = { centre, x, width: cw };
+  return `crop=${cw}:${H}:${x}:0,scale=${UGC[0]}:${UGC[1]}:flags=lanczos,setsar=1`;
 }
 
 function render(job, emit) {
@@ -272,12 +312,15 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
       tell({ step, status: 'running' });
       if (step === 'audio') {
         job.meta = await probe(join(job.dir, job.input));
+        job.warnings = [];
         await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k', join(job.dir, 'audio.mp3')]);
+        const crop = job.layout === '9:16' ? await reframe(job) : null;
         // normalise once: H.264 with a keyframe every second seeks frame-accurately in the renderer and
         // plays in every browser preview (phone HEVC / sparse-keyframe uploads otherwise freeze)
-        await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+        await run('ffmpeg', ['-y', '-v', 'error', '-i', join(job.dir, job.input), ...(crop ? ['-vf', crop] : []), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
           '-pix_fmt', 'yuv420p', '-g', '30', '-keyint_min', '30', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', join(job.dir, 'source.mp4')]);
         job.input = 'source.mp4';
+        if (crop) job.meta = { ...job.meta, width: UGC[0], height: UGC[1] };
       }
       if (step === 'transcribe') {
         // 1. a transcript shipped next to the video (samples, test clips): no key, no credits

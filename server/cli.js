@@ -41,6 +41,7 @@ for (const file of files) {
     });
     await runJob(job, e => process.stdout.write(`\r${name}: ${e.step} ${e.progress != null ? `${e.progress}%` : e.status}`.padEnd(60)),
       'audio', o['no-render'] ? 'compose' : 'render');
+    if (job.reframe) console.log(`\n↳ 9:16: cropped ${job.reframe.width}px wide at x=${job.reframe.x}, speaker at ${Math.round(job.reframe.centre * 100)}% of the width`);
     for (const w of job.warnings ?? []) console.warn(`\n⚠ ${w.message}`);
     if (o.strict && job.warnings?.length) throw new Error(`${job.warnings.length} warning(s) with --strict`);
     if (o['no-render']) { console.log(`\n✓ composed ${job.dir}`); continue; }
