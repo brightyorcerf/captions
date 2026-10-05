@@ -9,4 +9,4 @@ The `interview-*` renders are captioned versions of Creative Commons footage fro
 
 Changes: cropped to 9:16 around the speaker, trimmed, captions added.
 
-`synthetic-portrait.*` is generated (macOS `say` speech over a gradient).
+`input/synthetic-portrait.mp4` is generated (macOS `say` speech over a gradient) and ships with its transcript, for running the pipeline without a key.
