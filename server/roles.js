@@ -1,7 +1,8 @@
 // Picks which words get special treatment in Eclipse:
 //   'callout'  – one big word at the top of the frame, behind the speaker
 //   'emphasis' – condensed uppercase inside the caption line
-// Heuristic only: long, capitalised or sentence-final content words win. The editor can override any choice.
+// Heuristic only: long, capitalised or sentence-final content words win; brand names (keyterms) are always
+// in-line keywords; every sentence gets at least one keyword. The editor can override any choice.
 
 // English + romanised Hindi function words that never deserve emphasis
 const STOP = new Set(`a an the of to and or but in on at for with from by as is are was were be been it this that these those
@@ -21,7 +22,7 @@ function score(words, i) {
   return b.length + (capital ? 3 : 0) + (/[.!?]$/.test(t) ? 1 : 0);
 }
 
-const ROLE_DEFAULTS = { calloutMin: 8, calloutGap: 6, emphasisMin: 7 };
+const ROLE_DEFAULTS = { calloutMin: 8, calloutGap: 6, emphasisMin: 7, sentencePause: 0.7, sentenceMin: 3 };
 
 /**
  * Mutates words: sets word.role = 'callout' | 'emphasis' (or deletes it).
@@ -32,6 +33,10 @@ export function assignRoles(words, phrases, opts = {}) {
   const o = { ...ROLE_DEFAULTS, ...opts };
   let prevEmphasis = false;
   for (const w of words) delete w.role;
+  // brand names (the keyterms) stay in the line as keywords and never go behind the speaker
+  // (reference: ASTROTALK is an in-line keyword; the words behind her are OBSIDIAN, TIGER, 12...)
+  const brands = new Set((o.keyterms ?? []).map(bare).filter(Boolean));
+  const isBrand = i => brands.has(bare(words[i].text));
 
   // Callouts are rationed: keep only the strongest candidates across the whole video (about one per
   // `calloutEvery` seconds, the reference's density), at least `calloutGap` apart, never the same word twice.
@@ -41,7 +46,7 @@ export function assignRoles(words, phrases, opts = {}) {
     const duration = words.at(-1)?.end ?? 0;
     const budget = o.calloutEvery ? Math.max(1, Math.round(duration / o.calloutEvery)) : Infinity;
     const candidates = phrases.flatMap((p, n) => n === 0 ? [] : p.wordIdx
-      .filter(i => !(o.calloutLatinOnly && words[i].hi))
+      .filter(i => !(o.calloutLatinOnly && words[i].hi) && !isBrand(i))
       .map(i => ({ i, n, s: score(words, i) })).filter(c => c.s >= o.calloutMin))
       .sort((a, b) => b.s - a.s || words[a.i].start - words[b.i].start);
     const picked = [], used = new Set();
@@ -54,15 +59,36 @@ export function assignRoles(words, phrases, opts = {}) {
     }
   }
 
+  const lineWords = p => p.wordIdx.filter(i => words[i].role !== 'callout');
+  for (const p of phrases) for (const i of lineWords(p)) if (isBrand(i)) words[i].role = 'emphasis';
+
+  // strong words: at most one per line, never on two lines in a row (unless a brand forced it)
   phrases.forEach((p, n) => {
-    if (calloutPhrases.has(n)) { prevEmphasis = false; return; }
-    const [best] = p.wordIdx.map(i => [i, score(words, i)]).sort((a, b) => b[1] - a[1]);
-    if (!best || best[1] === 0) { prevEmphasis = false; return; }
-    const [i, s] = best;
-    if (s >= o.emphasisMin && !prevEmphasis) {
-      words[i].role = 'emphasis';
+    if (calloutPhrases.has(n) || lineWords(p).some(i => words[i].role)) { prevEmphasis = lineWords(p).some(i => words[i].role); return; }
+    const [best] = lineWords(p).map(i => [i, score(words, i)]).sort((a, b) => b[1] - a[1]);
+    if (best && best[1] >= o.emphasisMin && !prevEmphasis) {
+      words[best[0]].role = 'emphasis';
       prevEmphasis = true;
     } else prevEmphasis = false;
+  });
+
+  // every sentence of 3+ words gets at least one keyword in the keyword font (reference: one or two per
+  // sentence, none in "Ye dekho.").
+  // A sentence ends at . ? ! or a long pause, so unpunctuated transcripts still get them.
+  const lineIdx = phrases.flatMap(lineWords).sort((a, b) => a - b);
+  let sentence = [];
+  const close = () => {
+    if (sentence.length >= o.sentenceMin && !sentence.some(i => words[i].role === 'emphasis')) {
+      const [best] = sentence.map(i => [i, score(words, i)]).sort((a, b) => b[1] - a[1]);
+      if (best?.[1] > 0) words[best[0]].role = 'emphasis';
+    }
+    sentence = [];
+  };
+  lineIdx.forEach((i, k) => {
+    const next = lineIdx[k + 1];
+    if (sentence.length && words[i].start - words[sentence.at(-1)].end > o.sentencePause) close();
+    sentence.push(i);
+    if (/[.!?…]["')\]]*$/.test(words[i].text) || next === undefined) close();
   });
   return words;
 }

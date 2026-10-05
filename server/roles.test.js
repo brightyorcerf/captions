@@ -46,3 +46,18 @@ test('latin-only callouts: english words and numbers, never romanised hindi, nev
   assert.equal(callouts.filter(c => c === 'crystals').length, 1);
   assert.ok(callouts.includes('12'));
 });
+
+test('brand names are in-line keywords, never callouts', () => {
+  const w = speak('Maine Astrotalk Store se mangwaya. Bilkul premium Obsidian stones');
+  assignRoles(w, chunk(w, { maxWords: 3 }), { keyterms: ['Astrotalk'], calloutMin: 8, calloutGap: 0 });
+  assert.equal(w[1].role, 'emphasis');
+});
+
+test('every sentence gets a keyword, punctuated or separated by a pause', () => {
+  const w = speak('Ye dekho mangwaya. kitna pyara lag raha hai yaar. so happy with this purchase');
+  w.slice(-5).forEach(x => { x.start += 2; x.end += 2; }); // unpunctuated, after a pause
+  const phrases = chunk(w, { maxWords: 3 });
+  assignRoles(w, phrases, { callout: false });
+  const sentences = [[0, 3], [3, 9], [9, 14]];
+  for (const [a, b] of sentences) assert.ok(w.slice(a, b).some(x => x.role === 'emphasis'), w.slice(a, b).map(x => x.text).join(' '));
+});

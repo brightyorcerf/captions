@@ -270,7 +270,7 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
         const opts = chunkOptions(job.style, job.meta);
         // auto-pick keywords once; after that the editor owns them
         if (!job.rolesSet) {
-          assignRoles(job.words, chunk(job.words, opts), { ...job.style.roles, callout: !!job.style.callout });
+          assignRoles(job.words, chunk(job.words, opts), { ...job.style.roles, callout: !!job.style.callout, keyterms: job.keyterms });
           job.rolesSet = true;
         }
         // callout words are lifted out of the line: they count as words of the phrase but take no line width
