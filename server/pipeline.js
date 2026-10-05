@@ -176,6 +176,7 @@ async function silhouette(file, fps = 10) {
  * sit behind it falls back to an in-line keyword, and the job carries a warning saying so.
  */
 const MATTE_FPS = 15;
+const RENDER_FPS = 30; // hyperframes' default composition rate
 const HEAD_TOO_LOW = 0.5; // head top below mid-frame: a word behind it would collide with the caption line
 async function matte(job) {
   job.mattes = [];
@@ -232,7 +233,11 @@ async function matte(job) {
         message: `"${word}" at ${w.start.toFixed(1)}s can't go behind the speaker: ${reason}. It is shown in the caption line instead.` });
       continue;
     }
-    job.mattes.push({ ...w, ...sil });
+    // the renderer expects ceil(duration × 30) frames from a clip and waits forever for a missing one, so
+    // declare what the file really holds, in whole frames (1.4000000000000021 s asked for a 43rd frame)
+    const real = Number((await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join(dir, w.src)])).stdout);
+    const k = Math.round(w.start * RENDER_FPS), n = Math.floor(real * RENDER_FPS + 1e-6);
+    job.mattes.push({ ...w, start: Number(((k + 0.001) / RENDER_FPS).toFixed(5)), duration: Number(((n - 0.5) / RENDER_FPS).toFixed(5)), ...sil });
   }
 }
 

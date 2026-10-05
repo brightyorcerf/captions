@@ -12,14 +12,17 @@ upload ─▶ ffmpeg ─▶ Scribe / Whisper ─▶ chunk + roles ─▶ matte �
 
 ## Highlights
 
-- **Text behind the speaker.** Eclipse's signature move is a giant keyword that the speaker's head eclipses. The pipeline cuts the speaker out *only* during callout windows, all in one model run at half resolution, then merges the mask onto full-resolution frames. Each window is cached, so edits re-render without re-matting.
+- **Text behind the speaker, on any video.** Eclipse's signature move is a giant keyword that the speaker's head eclipses. The pipeline cuts the speaker out *only* during callout windows (one model run, cached), extracts their outline every 1/10 s, and places each word against that outline: the head hides 55 % of a wide word's letters, and a narrow word tucks a third of itself behind the head. These are rules relative to the speaker, measured once on the reference, so they hold wherever the speaker stands and however they move.
+- **Never silently wrong.** If the cut-out fails, finds nobody, or finds the head too low, that word moves into the caption line as a keyword (never across the face) and the editor shows why, with a Retry button. `--strict` makes the CLI fail instead.
+- **Vertical by default.** Any landscape or square upload becomes a 1080×1920 frame cropped around the speaker's head, found from 12 sampled frames. `--layout original` keeps the source frame.
 - **Preview is the render.** The browser preview loads the exact HTML file HyperFrames renders, so what you approve is what you export.
 - **Styles are data, not code.** Eclipse is a `style.json` + `style.css` folder. A second style (`glido`) needed zero code changes, and the brief's alternative look is a two-token edit.
 - **Every boundary comes from the transcript.** There are no frame numbers or hard-coded timings. Line limits come from video width and font metrics, so a 10-second portrait clip and a 3-minute landscape talk run through the same code.
 - **Hinglish done the way creators write it.** Scribe returns Hindi as Devanagari; `romanize.js` converts it to creator-style Latin. Its test fixture is every Hindi word of the reference reel, and all 55 match the reference's own captions.
 - **Fix it in the browser.** Click a word to correct it, right-click to make it a keyword or callout. Re-rendering costs no API call, and the transcript cache is keyed on audio, provider, language and keyterms.
 - **Deterministic, offline renders.** GSAP and fonts are pinned npm dependencies copied into each job, with no CDNs at render time. Generated compositions pass `hyperframes lint` with 0 errors and 0 warnings.
-- **Checked against the real thing.** The provided reference reel was run through the pipeline and compared frame by frame with the original (see [Samples](#samples)). Callout size, position, colour box and head occlusion line up with the reference.
+- **Checked against the real thing, and against clips it was never tuned on.** The reference reel was compared frame by frame with the original (callouts within 4–20 px). `tools/check.mjs` checks the same rules on any composed job, and they pass on [a test set](#testing) of unseen clips.
+- **Careful with paid credits.** Every video is transcribed once (cached by audio hash). Anything over 5 minutes is refused unless you pass `--yes`, every paid call is logged with a running total, and the samples ship their transcripts so they run without a key.
 
 ## Quick start
 
@@ -42,9 +45,20 @@ Batch / headless mode uses the same pipeline:
 ```bash
 npm run caption -- samples/input/*.mp4 --style eclipse --out out/
 npm run caption -- talk.mp4 --style glido --language hi --keyterms "Glido,FramesNFlights"
+npm run caption -- wide.mp4 --layout original      # keep a landscape frame
 ```
 
-Tests: `npm test`. They cover the chunker (10-second, fast-talker and 3-minute transcripts, pauses, orphans, callout-aware limits) and keyword picking (Hinglish stopwords, callout spacing).
+| Flag | Effect |
+|---|---|
+| `--keyterms` | Brand names: spelled right by the transcriber, always shown as in-line keywords, never behind the speaker |
+| `--layout 9:16|original` | Eclipse defaults to 9:16, cropped around the speaker |
+| `--yes` | Allow sending more than `MAX_STT_MINUTES` (default 5) of audio to the paid API |
+| `--strict` | Exit non-zero if any callout could not go behind the speaker |
+| `--no-render` | Stop after composing (for `hyperframes snapshot` or `tools/check.mjs`) |
+
+A transcript file next to the video (`clip.transcript.json`) is used instead of the API.
+
+Tests: `npm test`. They cover the chunker (10-second, fast-talker and 3-minute transcripts, pauses, orphans, callout-aware limits), keyword picking (Hinglish stopwords, callout spacing, brands, one keyword per sentence) and the romanizer. See [Testing](#testing) for the checks on real video.
 
 ## How it works
 
@@ -78,8 +92,9 @@ Measured from the reference reel, not eyeballed: fonts identified by pixel-overl
 |---|---|---|
 | Caption line | Montserrat 700, 6.94 % of the short edge, pure white, faint soft shadow, no stroke, 1–4 words, **hard cut** in and out | `fontScale`, `position`, `chunk`, `motion.in/out: 0` |
 | Active word | `#FEE300` text + translucent yellow box 0.2 em around the ink, no pop | `colors.active`, `highlight`, `motion` |
-| Keywords | Anton caps inside the line, 1.11 em, 0.025 em tracking (MANGWAYA, LAZULI) | `roles.emphasisMin`, `style.css` |
-| Callout | Anton caps at a fixed 0.298 × width, left-anchored, shrunk only past 90.6 %; numbers and short words 1.22× and level with the head. **Behind the speaker's head**, lives exactly as long as its phrase, hard cut, white → yellow + box while spoken. About one per 10 s, English words or numbers only in Hinglish (*barah* → **12**). | `callout.*`, `roles.callout*` |
+| Keywords | Anton caps inside the line, 1.11 em, 0.025 em tracking (MANGWAYA, LAZULI). At least one per sentence of 3+ words; brand names (ASTROTALK) always | `roles.emphasisMin`, `--keyterms`, `style.css` |
+| Callout | Anton caps at a fixed 0.298 × width, left-anchored, shrunk only past 90.6 %; numbers and short words 1.22× and beside the head. **Behind the speaker's head**: the head hides 55 % of the letters' height. Lives exactly as long as its phrase, hard cut, white → yellow + box while spoken. About one per 10 s, English words or numbers only in Hinglish (*barah* → **12**), never a brand. | `callout.*`, `roles.callout*` |
+| Layout | 9:16, 1080×1920, cropped around the speaker | `layout` |
 
 The brief's suggested variant (1.2x pop, previous word dimmed to 50%) is a two-token change: `motion.activeScale: 1.2`, `motion.dimOpacity: 0.5`.
 
@@ -91,8 +106,9 @@ Matting is the slowest step, so it is kept small:
 - **All windows go through one model run.** The u2net model takes about 15 s just to start, so each callout does not pay that again.
 - It runs at **half resolution and 15 fps**. Its alpha is then merged onto the full-resolution 30 fps frames with `ffmpeg alphamerge`, so the speaker stays sharp. Edges can lag the head by up to 1/30 s, which is not noticeable behind a word.
 - The result is **cached per window**, so editing a word re-renders without re-matting.
+- From each cut-out, the **speaker's outline** (top of the person per column, every 1/10 s) goes into the composition. `runtime/captions.js` places each word against it once the font has loaded (rules in [docs/eclipse-spec.md](docs/eclipse-spec.md#as-rules-for-any-video)), checks every sampled frame, and reports how much of each word is hidden.
 
-On a 4-core i5, one 2.7 s callout takes about 41 s and two take about 61 s. If matting fails, the callout still renders, just in front of the speaker.
+On a 4-core i5, one 2.7 s callout takes about 41 s and two take about 61 s. If matting fails, finds no person, or finds the head below mid-frame, the word is shown in the caption line instead, and the job carries a warning (editor banner with Retry; `--strict` in the CLI).
 
 ### Hinglish
 

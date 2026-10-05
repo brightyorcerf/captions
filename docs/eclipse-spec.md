@@ -48,6 +48,8 @@ Values in `styles/eclipse/style.json` and `style.css` come from this page.
 
 | Property | Value |
 |---|---|
+| How many | about 15 of the reel's ~40 lines; every sentence of 3+ words has one or two, 2-word sentences ("Ye dekho.") have none |
+| Which words | content words, Hindi included (MANGWAYA, RASHI, MANGWANA), and the **brand** (ASTROTALK): the brand stays in the line, it never goes behind the speaker |
 | Font | Anton, uppercase |
 | Size | about 84 px = **1.11 em** of the line |
 | Letter-spacing | about **0.025 em** (ink is 2–4 % wider than Anton's default) |
@@ -67,9 +69,9 @@ Values in `styles/eclipse/style.json` and `style.css` come from this page.
 |---|---|
 | Font | Anton, uppercase, about 0.02 em letter-spacing |
 | Size | **fixed at 0.298 × frame width** (about 322 px). It shrinks only when the word would exceed 90.6 % of the width (SPECIFICALLY). |
-| Horizontal | **left-anchored at 6.5 %**. Long words fill the width and only look centred; short words stay left with their right side behind the head. |
-| Vertical | baseline 0.55 em below the top of the speaker's head, so the head covers the bottom of the letters |
-| Narrow callouts (under 40 % of the width, e.g. **12**) | 1.22× bigger, left edge at 10.6 %, level with the head rather than above it (baseline 0.9 em below the head top), right side tucked behind the head |
+| Horizontal | **left-anchored at 6.5 %**. Long words fill the width and only look centred. |
+| Vertical | the head hides the bottom **55 %** of the letters' height (PISCES: 0.54, measured against the speaker's outline under the word) |
+| Narrow callouts (under 40 % of the width, e.g. **12**) | 1.22× bigger, beside the head rather than above it: **34 % of the word's width tucked behind the head's edge**, the top of the number level with the top of the head |
 | Box when active | translucent yellow, about **0.2 em around the ink on every side**, the same rule as the line's active-word box. Behind SPECIFICALLY it spans almost the full width. |
 | Caption line meanwhile | lifted about 0.8 em (measured 38–80 px higher than usual) |
 | Layering | video → callout → cut-out speaker → caption line |
@@ -81,6 +83,20 @@ Values in `styles/eclipse/style.json` and `style.css` come from this page.
 | Word choice | nouns, product names, numbers and English words inside Hinglish (OBSIDIAN, PISCES, TIGER, SPECIFICALLY, 12); never Hindi verbs |
 | Density | 5 in 50 s, so about one per 10 s; the strongest candidates win, at least 2.5 s apart, never the same word twice |
 
+### As rules, for any video
+
+The reference has one speaker, centred. To work on any clip, the placement is stated relative to the speaker, not the frame. For each callout window, the pipeline extracts the speaker's outline (the top of the person in each of 108 columns, every 1/10 s), and the runtime places the word against it once the font has loaded:
+
+| Rule | Value | Token |
+|---|---|---|
+| Wide word: start at the left margin; shift right only if it would not reach the head | margin 6.5 % | `callout.left`, `callout.tuck` |
+| Wide word: share of the letters' height hidden under the outline beneath the word | 55 % of the median outline; kept between 15 % and 85 % in every sampled frame when the speaker moves | `depth`, `minDepth`, `maxDepth` |
+| Narrow word: beside the head on the left, or the right if that side has clearly more room (> 1.3×) | 34 % of its width behind the head edge, top level with the head top | `tuck`, `narrowOffset` |
+| Readable: share of the word's area the speaker hides, in every sampled frame | 3–60 % (the reference: 12–36 %) | `minHidden`, `maxHidden` |
+| No cut-out, no person found, or head below mid-frame | the word becomes an in-line keyword and the job gets a warning | — |
+
+`tools/check.mjs` reports these per callout for any composed job.
+
 ## A/B result
 
 `tools/measure/abtest.mjs` clones a composed job onto a black background with transparent cut-outs, snapshots it, and measures text ink boxes with the same thresholds as the reference.
@@ -90,18 +106,20 @@ npm run caption -- reference/eclipse.mp4 --style eclipse --keyterms "Astrotalk" 
 node tools/measure/abtest.mjs jobs/<job-id> reference/eclipse.mp4 22.9,27.0,28.9,46.0,47.9
 ```
 
-Ours minus the reference, in pixels at 1080×1920:
+Ours minus the reference, in pixels at 1080×1920 (the line rows are from before the keyword-density change, which re-split some phrases):
 
 | Moment | Element | Δ left | Δ width | Δ top | Δ height |
 |---|---|---|---|---|---|
 | 27.0 s | line "crystals lage hue hain" | −5 | +10 | −2 | 0 |
 | 46.0 s | line "Kyunki unki WEBSITE" | +4 | −3 | −1 | +6 |
 | 47.9 s | line "sare rashiyon" | −2 | +4 | −22 | 0 |
-| 22.9 s | callout PISCES. | −6 | −1 | +3 | −1 |
-| 28.9 s | callout SPECIFICALLY | +24 | −10 | −13 | −3 |
-| 47.9 s | callout 12 | +1 | n/a (the head hides part of the reference) | −2 | 0 |
+| 22.9 s | callout PISCES. | −16 | −1 | +4 | −1 |
+| 28.9 s | callout SPECIFICALLY | +20 | −1 | −14 | −2 |
+| 47.9 s | callout 12 | +5 | n/a (the head hides part of the reference) | +6 | 0 |
 
-Same callouts as the reference at the same moments: PISCES (22.2–23.6 s vs 22.5–23.4 s), SPECIFICALLY (28.3 s) and 12 (47.3–48.6 s vs 47.3–48.5 s). The other two picks are editorial: the reference chose OBSIDIAN and TIGER; the heuristic picks ASTROTALK and AESTHETIC. Any word can be changed in the editor.
+Callout rows are from the outline-based placement above, which states every rule relative to the speaker rather than the frame.
+
+Same callouts as the reference at the same moments: PISCES (22.2–23.6 s vs 22.5–23.4 s), SPECIFICALLY (28.3 s) and 12 (47.3–48.6 s vs 47.3–48.5 s). The other two picks are editorial: the reference chose OBSIDIAN and TIGER; the heuristic picks CRYSTALS and AESTHETIC (ASTROTALK is no longer a candidate: brand names stay in the line, as in the reference). Any word can be changed in the editor.
 
 ## Checked and rejected
 
