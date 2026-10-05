@@ -15,6 +15,24 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const JOBS = join(ROOT, 'jobs');
 const CACHE = join(JOBS, '.cache');
 const MAX_SECONDS = 600;
+const USAGE = join(CACHE, 'usage.json');
+
+/** Speech-to-text is billed per minute: refuse long files unless asked, so a stray 10-minute upload can't eat the quota. */
+async function guardCredits(seconds, allowLong) {
+  const max = Number(process.env.MAX_STT_MINUTES || 5);
+  if (!allowLong && seconds > max * 60)
+    throw new Error(`${(seconds / 60).toFixed(1)} min of audio would be sent for transcription, the limit is ${max} min (raise MAX_STT_MINUTES, or pass --yes to the CLI)`);
+}
+
+/** Running total of audio sent to the paid API, kept next to the transcript cache. */
+async function logUsage(seconds) {
+  const u = await readFile(USAGE, 'utf8').then(JSON.parse, () => ({ seconds: 0, calls: [] }));
+  u.seconds += seconds;
+  u.calls.push({ at: new Date().toISOString(), provider: pickProvider(), seconds: Math.round(seconds * 10) / 10 });
+  await writeFile(USAGE, JSON.stringify(u, null, 1));
+  console.log(`[stt] sent ${seconds.toFixed(1)}s to ${pickProvider()}, ${(u.seconds / 60).toFixed(1)} min in total on this machine`);
+  return { seconds, totalSeconds: u.seconds };
+}
 const STEPS = ['audio', 'transcribe', 'chunk', 'matte', 'compose', 'render'];
 
 export const listStyles = async () =>
@@ -197,12 +215,13 @@ function render(job, emit) {
 }
 
 /** Creates a job folder. `source` is copied in unless the caller already wrote `input<ext>` there. */
-export async function createJob({ id, ext, styleName = 'eclipse', source, language, keyterms }) {
+export async function createJob({ id, ext, styleName = 'eclipse', source, language, keyterms, transcriptFile, allowLong, layout }) {
   const dir = join(JOBS, id);
   await mkdir(dir, { recursive: true });
   const input = `input${ext}`;
   if (source) await copyFile(source, join(dir, input));
-  return { id, dir, input, styleName, style: await loadStyle(styleName), language, keyterms, state: null };
+  const style = await loadStyle(styleName);
+  return { id, dir, input, styleName, style, language, keyterms, transcriptFile, allowLong, layout: layout ?? style.layout ?? 'original', state: null };
 }
 
 /** Runs the pipeline from `from` to `to`. Re-running from 'chunk' re-uses the (edited) transcript: no API call. */
@@ -223,15 +242,23 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
         job.input = 'source.mp4';
       }
       if (step === 'transcribe') {
-        // cache by content hash + everything that changes the result: same request never pays twice
-        const req = JSON.stringify([pickProvider(), job.language ?? null, [...(job.keyterms ?? [])].sort()]);
-        const key = createHash('sha256').update(await sha256(join(job.dir, 'audio.mp3'))).update(req).digest('hex');
-        const cached = join(CACHE, `${key}.json`);
-        let t = await readFile(cached, 'utf8').then(JSON.parse, () => null);
+        // 1. a transcript shipped next to the video (samples, test clips): no key, no credits
+        let t = job.transcriptFile ? JSON.parse(await readFile(job.transcriptFile, 'utf8')) : null;
+        // 2. cache by content hash + everything that changes the result: same request never pays twice
+        let cached;
         if (!t) {
+          const req = JSON.stringify([pickProvider(), job.language ?? null, [...(job.keyterms ?? [])].sort()]);
+          const key = createHash('sha256').update(await sha256(join(job.dir, 'audio.mp3'))).update(req).digest('hex');
+          cached = join(CACHE, `${key}.json`);
+          t = await readFile(cached, 'utf8').then(JSON.parse, () => null);
+        }
+        // 3. the API, behind a spending guard
+        if (!t) {
+          await guardCredits(job.meta.duration, job.allowLong);
           t = await transcribe(join(job.dir, 'audio.mp3'), { language: job.language, keyterms: job.keyterms });
           await mkdir(CACHE, { recursive: true });
           await writeFile(cached, JSON.stringify(t));
+          job.usage = await logUsage(job.meta.duration);
         }
         if (!t.words.length) throw new Error('no speech found in this video');
         job.words = t.words;
