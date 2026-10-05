@@ -28,9 +28,10 @@ export function chunk(words, opts = {}) {
         w.start - prev.end > o.maxGap ||                       // speaker paused
         /[.!?…]["')\]]*$/.test(prev.text) ||                     // sentence ended
         (/[,;:—–]["')\]]*$/.test(prev.text) && cur.length >= o.minWords); // clause ended
-      // words shown elsewhere (e.g. an Eclipse callout) don't take up room on the caption line
+      // words shown elsewhere (e.g. an Eclipse callout) still count as a word of the phrase,
+      // but take up no room on the caption line ("jo [SPECIFICALLY]", "sare [12] rashiyon")
       const line = [...cur, i].filter(k => !o.free?.(k));
-      const full = line.length > o.maxWords || textLen(line.map(k => words[k])) > o.maxChars;
+      const full = cur.length + 1 > o.maxWords || textLen(line.map(k => words[k])) > o.maxChars;
 
       if (hard) push(false);
       else if (full) {
@@ -51,7 +52,7 @@ export function chunk(words, opts = {}) {
     if (!a.soft || b.idx.length >= o.minWords) continue;
     const all = [...a.idx, ...b.idx];
     const line = all.filter(k => !o.free?.(k));
-    if (line.length <= o.maxWords && textLen(line.map(k => words[k])) <= o.maxChars) {
+    if (all.length <= o.maxWords && textLen(line.map(k => words[k])) <= o.maxChars) {
       a.idx = all; a.soft = b.soft; groups.splice(g--, 1);
     } else {
       let cut = Math.ceil(all.length / 2);

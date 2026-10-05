@@ -87,8 +87,11 @@ test('long silence clears the screen', () => {
   assert.ok(a.end < 1 && b.start === 5);
 });
 
-test('free words (callouts) do not count toward the line limit', () => {
+test('free words (callouts) count as words but take no room on the line', () => {
   const w = speak('Obsidian aur lapis lazuli');
-  assert.equal(chunk(w, { maxWords: 3 }).length, 2);
-  assert.deepEqual(chunk(w, { maxWords: 3, free: i => i === 0 }).map(p => p.wordIdx), [[0, 1, 2, 3]]);
+  assert.equal(chunk(w, { maxWords: 4, maxChars: 17 }).length, 2);
+  // lifted out of the line, the callout no longer pushes the line over its width
+  assert.deepEqual(chunk(w, { maxWords: 4, maxChars: 17, free: i => i === 0 }).map(p => p.wordIdx), [[0, 1, 2, 3]]);
+  // but it still counts toward the word limit
+  assert.equal(chunk(w, { maxWords: 3, maxChars: 99, free: i => i === 0 }).length, 2);
 });

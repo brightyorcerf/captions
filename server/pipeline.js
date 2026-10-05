@@ -246,16 +246,13 @@ export async function runJob(job, emit = () => {}, from = 'audio', to = 'render'
           assignRoles(job.words, chunk(job.words, opts), { ...job.style.roles, callout: !!job.style.callout });
           job.rolesSet = true;
         }
-        // callout words are lifted out of the line, so they don't count toward its limits
+        // callout words are lifted out of the line: they count as words of the phrase but take no line width
         job.phrases = chunk(job.words, { ...opts, free: i => job.style.callout && job.words[i].role === 'callout' });
-        // a callout lives in its own layer, so it may outlast its phrase (until the next callout)
+        // a callout lives exactly as long as its phrase (measured: 0.9–1.8 s, hard cut in and out)
         if (job.style.callout) {
-          let next = job.meta.duration;
-          for (const p of [...job.phrases].reverse()) {
+          for (const p of job.phrases) {
             const idx = p.wordIdx.find(i => job.words[i].role === 'callout');
-            if (idx === undefined) continue;
-            p.callout = { idx, start: p.start, end: Math.min(Math.max(p.end, job.words[idx].end + job.style.callout.hold), next) };
-            next = p.start;
+            if (idx !== undefined) p.callout = { idx, start: p.start, end: p.end };
           }
         }
         await writeFile(join(job.dir, 'transcript.json'), JSON.stringify({ words: job.words, phrases: job.phrases }, null, 1));
