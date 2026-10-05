@@ -7,7 +7,14 @@ const COMMON = {
   'की': 'ki', 'ये': 'ye', 'यह': 'ye', 'वो': 'wo', 'वह': 'wo', 'और': 'aur', 'नहीं': 'nahi', 'था': 'tha', 'थी': 'thi',
   'थे': 'the', 'भी': 'bhi', 'लिए': 'liye', 'क्या': 'kya', 'तो': 'to', 'से': 'se', 'हम': 'hum', 'आप': 'aap', 'यार': 'yaar',
   'बहुत': 'bahut', 'अच्छा': 'accha', 'कुछ': 'kuch', 'एक': 'ek', 'हाँ': 'haan', 'हां': 'haan', 'जो': 'jo', 'ना': 'na',
-  'क्योंकि': 'kyunki', 'उन्हीं': 'unhi',
+  'क्योंकि': 'kyunki', 'उन्हीं': 'unhi', 'यानी': 'yaani',
+};
+
+// spoken numbers are shown as digits, like the reference ("बारह" -> 12). एक/दो are left alone: they also mean "a"/"give".
+const NUMBERS = {
+  'तीन': 3, 'चार': 4, 'पांच': 5, 'पाँच': 5, 'छह': 6, 'छः': 6, 'सात': 7, 'आठ': 8, 'नौ': 9, 'दस': 10, 'ग्यारह': 11,
+  'बारह': 12, 'तेरह': 13, 'चौदह': 14, 'पंद्रह': 15, 'पन्द्रह': 15, 'सोलह': 16, 'सत्रह': 17, 'अठारह': 18, 'उन्नीस': 19,
+  'बीस': 20, 'पच्चीस': 25, 'तीस': 30, 'पचास': 50, 'सौ': 100, 'हज़ार': 1000, 'हजार': 1000,
 };
 
 const CONS = {
@@ -24,6 +31,7 @@ const DIGITS = '०१२३४५६७८९';
 export const hasDevanagari = s => /[ऀ-ॿ]/.test(s);
 
 function word(w) {
+  if (NUMBERS[w]) return String(NUMBERS[w]);
   if (COMMON[w]) return COMMON[w];
   const ch = [...w.normalize('NFC')];
   // pass 1: syllables. v = vowel text, implicit = the inherent 'a' nobody wrote
@@ -84,12 +92,15 @@ export function romanize(text, capitalise = false) {
   return pre + r + post.replace(/।/g, '.');
 }
 
-/** In-place: romanise every Devanagari word; sentence starts get a capital, like the reference. */
+/** In-place: romanise every Devanagari word; sentence starts get a capital, like the reference.
+ *  Romanised words are flagged `hi` so role picking can tell Hindi from English-in-Hinglish. */
 export function romanizeWords(words) {
   words.forEach((w, i) => {
     if (!hasDevanagari(w.text)) return;
+    const hindi = /[ऀ-ॣ०-ॿ]/.test(w.text); // letters, not just a trailing danda ("Pisces।")
     const start = i === 0 || /[.!?।]$/.test(words[i - 1].text);
     w.text = romanize(w.text, start);
+    if (hindi && !/^\d/.test(w.text)) w.hi = true;
   });
   return words;
 }

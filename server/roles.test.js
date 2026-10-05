@@ -34,3 +34,15 @@ test('short or stopword-only phrases get nothing', () => {
   assignRoles(w, chunk(w));
   assert.deepEqual(roles(w), []);
 });
+
+test('latin-only callouts: english words and numbers, never romanised hindi, never repeated', () => {
+  const t = (text, hi) => ({ text, hi, start: 0, end: 0 });
+  const words = [t('intro'), t('words'), t('here'), t('mangwaya', true), t('crystals'), t('obsidian'), t('crystals'), t('12')];
+  words.forEach((w, i) => { w.start = i * 4; });
+  const phrases = [[0, 1, 2], [3, 4], [5], [6], [7]].map(wordIdx => ({ wordIdx }));
+  assignRoles(words, phrases, { calloutMin: 8, calloutGap: 3, emphasisMin: 7, calloutLatinOnly: true });
+  const callouts = words.filter(w => w.role === 'callout').map(w => w.text);
+  assert.ok(!callouts.includes('mangwaya'));
+  assert.equal(callouts.filter(c => c === 'crystals').length, 1);
+  assert.ok(callouts.includes('12'));
+});

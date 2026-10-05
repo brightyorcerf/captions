@@ -14,6 +14,7 @@ const bare = t => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 function score(words, i) {
   const t = words[i].text;
   const b = bare(t);
+  if (/^\d+$/.test(b)) return 20; // numbers make the strongest callouts ("12")
   if (b.length < 5 || STOP.has(b)) return 0;
   const sentenceStart = i === 0 || /[.!?…]["')\]]*$/.test(words[i - 1].text);
   const capital = /^\p{Lu}/u.test(t) && !sentenceStart; // proper noun / brand
@@ -29,18 +30,36 @@ const ROLE_DEFAULTS = { calloutMin: 8, calloutGap: 6, emphasisMin: 7 };
  */
 export function assignRoles(words, phrases, opts = {}) {
   const o = { ...ROLE_DEFAULTS, ...opts };
-  let lastCallout = -Infinity, prevEmphasis = false;
+  let prevEmphasis = false;
   for (const w of words) delete w.role;
 
+  // Callouts are rationed: keep only the strongest candidates across the whole video (about one per
+  // `calloutEvery` seconds, the reference's density), at least `calloutGap` apart, never the same word twice.
+  // calloutLatinOnly: in Hinglish, callouts are English words or numbers (OBSIDIAN, TIGER, 12), never Hindi verbs.
+  const calloutPhrases = new Set();
+  if (o.callout !== false) {
+    const duration = words.at(-1)?.end ?? 0;
+    const budget = o.calloutEvery ? Math.max(1, Math.round(duration / o.calloutEvery)) : Infinity;
+    const candidates = phrases.flatMap((p, n) => n === 0 ? [] : p.wordIdx
+      .filter(i => !(o.calloutLatinOnly && words[i].hi))
+      .map(i => ({ i, n, s: score(words, i) })).filter(c => c.s >= o.calloutMin))
+      .sort((a, b) => b.s - a.s || words[a.i].start - words[b.i].start);
+    const picked = [], used = new Set();
+    for (const c of candidates) {
+      if (picked.length >= budget) break;
+      if (calloutPhrases.has(c.n) || used.has(bare(words[c.i].text))) continue;
+      if (picked.some(p => Math.abs(words[p.i].start - words[c.i].start) < o.calloutGap)) continue;
+      picked.push(c); used.add(bare(words[c.i].text)); calloutPhrases.add(c.n);
+      words[c.i].role = 'callout';
+    }
+  }
+
   phrases.forEach((p, n) => {
+    if (calloutPhrases.has(n)) { prevEmphasis = false; return; }
     const [best] = p.wordIdx.map(i => [i, score(words, i)]).sort((a, b) => b[1] - a[1]);
     if (!best || best[1] === 0) { prevEmphasis = false; return; }
     const [i, s] = best;
-    if (o.callout !== false && n > 0 && s >= o.calloutMin && words[i].start - lastCallout >= o.calloutGap) {
-      words[i].role = 'callout';
-      lastCallout = words[i].start;
-      prevEmphasis = false;
-    } else if (s >= o.emphasisMin && !prevEmphasis) {
+    if (s >= o.emphasisMin && !prevEmphasis) {
       words[i].role = 'emphasis';
       prevEmphasis = true;
     } else prevEmphasis = false;

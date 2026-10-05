@@ -31,7 +31,7 @@ test('long vowels, closed monosyllables, silent h and vowel clusters', () => {
   assert.equal(romanize('था'), 'tha');       // open: stays short
   assert.equal(romanize('मीन'), 'meen');     // long i/u inside a word: ee/oo
   assert.equal(romanize('दूसरा'), 'doosra');
-  assert.equal(romanize('यानी'), 'yani');    // ...but i/u at the end of a word
+  assert.equal(romanize('लड़की'), 'ladki');   // ...but i/u at the end of a word
   assert.equal(romanize('भाई'), 'bhai');     // vowel after a vowel
   assert.equal(romanize('हुआ'), 'hua');
   assert.equal(romanize('हुए'), 'hue');
@@ -45,7 +45,7 @@ test('matches the reference reel', () => {
     'भी': 'bhi', 'से': 'se', 'ना': 'na', 'धनु': 'dhanu', 'राशि': 'rashi', 'था': 'tha', 'अपने': 'apne', 'लिए': 'liye',
     'भाई': 'bhai', 'यह': 'ye', 'कितना': 'kitna', 'प्यारा': 'pyara', 'रहा': 'raha', 'है': 'hai', 'यार': 'yaar',
     'बिल्कुल': 'bilkul', 'हैं': 'hain', 'इनके': 'inke', 'तो': 'to', 'दूसरा': 'doosra', 'के': 'ke', 'उसका': 'uska',
-    'मीन': 'meen', 'देखो': 'dekho', 'लगे': 'lage', 'हुए': 'hue', 'जो': 'jo', 'उन्हीं': 'unhi', 'वालों': 'walon',
+    'मीन': 'meen', 'यानी': 'yaani', 'देखो': 'dekho', 'लगे': 'lage', 'हुए': 'hue', 'जो': 'jo', 'उन्हीं': 'unhi', 'वालों': 'walon',
     'बनाया': 'banaya', 'हुआ': 'hua', 'मस्त': 'mast', 'का': 'ka', 'ही': 'hi', 'नहीं': 'nahi', 'आएगा': 'aayega',
     'अगर': 'agar', 'आपको': 'aapko', 'मंगवाना': 'mangwana', 'आप': 'aap', 'मंगवा': 'mangwa', 'सकते': 'sakte',
     'हो': 'ho', 'क्योंकि': 'kyunki', 'उनकी': 'unki', 'सारे': 'sare', 'राशियों': 'rashiyon',
@@ -58,4 +58,17 @@ test('sentence starts are capitalised, latin words untouched', () => {
   const w = ['मैंने', 'life', 'में', 'crystals', 'देखे।', 'ये', 'देखो'].map(text => ({ text }));
   assert.deepEqual(romanizeWords(w).map(x => x.text), ['Maine', 'life', 'mein', 'crystals', 'dekhe.', 'Ye', 'dekho']);
   assert.ok(!w.some(x => hasDevanagari(x.text)));
+});
+
+test('spoken numbers become digits and are not flagged as hindi', () => {
+  const w = romanizeWords(['सारे', 'बारह', 'राशियों'].map(text => ({ text })));
+  assert.deepEqual(w.map(x => x.text), ['Sare', '12', 'rashiyon']);
+  assert.deepEqual(w.map(x => !!x.hi), [true, false, true]);
+  assert.equal(romanize('दो'), 'do'); // also means "give": left as a word
+});
+
+test('an english word with a danda is not flagged as hindi', () => {
+  const [w] = romanizeWords([{ text: 'Pisces।' }]);
+  assert.equal(w.text, 'Pisces.');
+  assert.ok(!w.hi);
 });
