@@ -56,8 +56,10 @@ for (const dir of process.argv.slice(2).map(d => resolve(d))) {
       p.wordIdx.forEach(i => {
         tl.seek(words[i].start + 0.017);
         // a big word may stay lit a little past the next word's start (callout.minActive)
-        const a = active().filter(s => !s.closest('.callout') || s.textContent === words[i].text).map(s => s.textContent);
-        if (a.length === 1 && a[0] === words[i].text) out.sync.ok++; else out.sync.bad.push(`${words[i].start.toFixed(2)}s "${words[i].text}" → [${a.join(', ')}]`);
+        // and shows without its punctuation ("BEAUTIFULLY", not "beautifully.")
+        const bare = t => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, '');
+        const a = active().filter(s => !s.closest('.callout') || bare(s.textContent) === bare(words[i].text)).map(s => s.textContent);
+        if (a.length === 1 && bare(a[0]) === bare(words[i].text)) out.sync.ok++; else out.sync.bad.push(`${words[i].start.toFixed(2)}s "${words[i].text}" → [${a.join(', ')}]`);
       });
     });
 

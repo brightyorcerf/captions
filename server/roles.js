@@ -80,7 +80,11 @@ export function assignRoles(words, phrases, opts = {}) {
   const close = () => {
     if (sentence.length >= o.sentenceMin && !sentence.some(i => words[i].role === 'emphasis')) {
       const [best] = sentence.map(i => [i, score(words, i)]).sort((a, b) => b[1] - a[1]);
-      if (best?.[1] > 0) words[best[0]].role = 'emphasis';
+      // all short words ("What was it like there?"): the longest one that isn't a function word
+      const [plain] = sentence.map(i => [i, bare(words[i].text)]).filter(([, b]) => b.length >= 3 && !STOP.has(b))
+        .sort((a, b) => b[1].length - a[1].length);
+      const pick = best?.[1] > 0 ? best[0] : plain?.[0];
+      if (pick !== undefined) words[pick].role = 'emphasis';
     }
     sentence = [];
   };

@@ -61,3 +61,9 @@ test('every sentence gets a keyword, punctuated or separated by a pause', () => 
   const sentences = [[0, 3], [3, 9], [9, 14]];
   for (const [a, b] of sentences) assert.ok(w.slice(a, b).some(x => x.role === 'emphasis'), w.slice(a, b).map(x => x.text).join(' '));
 });
+
+test('a sentence of only short words still gets one, never a function word', () => {
+  const w = speak('What was it like there?');
+  assignRoles(w, chunk(w), { callout: false });
+  assert.deepEqual(roles(w), ['like:emphasis']);
+});

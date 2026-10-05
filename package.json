@@ -18,6 +18,7 @@
     "@fontsource/montserrat": "5.3.0",
     "@fontsource/poppins": "5.2.7",
     "gsap": "3.14.2",
-    "hyperframes": "0.8.112"
+    "hyperframes": "0.8.112",
+    "onnxruntime-node": "1.21.1"
   }
 }

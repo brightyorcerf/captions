@@ -18,7 +18,7 @@ upload > ffmpeg > ElevenLabs Scribe or Whisper > phrases and key words > speaker
 - Text behind the speaker works on any video. The speaker's head outline is tracked ten times a second, and each big word is placed against it using proportions measured once on the reference.
 - The look was measured, not eyeballed. Fonts were matched by pixel comparison, colours sampled and timing tracked frame by frame. Our text lands within 4 to 20 pixels of the reference.
 - It never fails silently. A big word that cannot go behind the speaker moves into the caption line, and the editor says why and offers a retry.
-- Any video becomes a 9:16 reel, cropped around the speaker. Close-ups and empty shots are shown whole over a blurred fill.
+- Any video becomes a 9:16 reel whose crop follows the speaker like a camera operator would: still while they stay near the middle, a smooth pan when the camera drifts, a jump on a camera cut. Close-ups and empty shots are shown whole over a blurred fill.
 - It was tested on clips it was never tuned on. The first run on three Creative Commons clips found five bugs, all fixed.
 - Hinglish is spelled the way creators write it, matching all 55 Hindi words in the reference.
 - It is careful with paid credits. Each video is transcribed once, long videos need confirmation, and the whole project used 1.6 minutes of audio.
@@ -33,6 +33,23 @@ upload > ffmpeg > ElevenLabs Scribe or Whisper > phrases and key words > speaker
 - Unfamiliar clips. They exposed a crop centred on the wall between two people, a close-up blown up into a giant face, a cut-out model that returns nothing for extreme close-ups, an unusual frame rate, and words sharing one timestamp that were never highlighted.
 - Fast talkers. Big words flashed for half a second. They now stay at least 0.9 seconds, the shortest in the reference, while the captions continue underneath.
 - Hindi transcription. The transcriber returns Devanagari, so the romanizer needed rules for silent vowels, word-final long vowels, number words (barah becomes 12) and the danda.
+
+## How the second version improved on the first
+
+A 20 second sports interview exposed the first version's limits. Its big word UNDERSTANDING was drawn across the speaker's face, the preview's play button did nothing, and the render took 5 and a half minutes. Each problem was traced to its cause by stepping through the output frame by frame.
+
+| | First approach | Problem it caused | New approach | Result |
+|---|---|---|---|---|
+| Speaker cut-out | hyperframes' `u2net_human_seg`, 700 ms a frame | Lost the head for half a second at a time, so big words showed through the face | MODNet portrait matting, run in-process with onnxruntime | Head solid in every frame, 130 ms a frame |
+| 9:16 crop | One fixed crop at the speaker's average position | When the camera panned, the speaker ended up at the frame edge, where the cut-out was worst | A crop that follows the speaker: holds still near the middle, pans smoothly when they drift, catches up on a fast move, jumps on a camera cut | Speaker stays framed through the whole interview |
+| Head height | The highest point of the outline | A hair tuft counted as the head, so the word sat above it | Thin spikes ignored | Words sit 55% behind the head, as on the reference |
+| Unsafe moments | A big word behind the speaker whatever happened on screen | Dissolves and montages left words over a crowd or a stranger | Speaker must be present and steady, and no camera cut while the word is up; otherwise it goes in the caption line with a reason | Every word behind a speaker passes the rule checks |
+| Captions | Verbatim | "uh,", "m-moved", "BEAUTIFULLY." | Fillers dropped, stutters collapsed, big words without punctuation | Reads like a finished reel |
+| Render | One capture worker, which hyperframes uses on 8 GB machines | 230 s for 20 s of video | Up to 3 workers as free memory allows, falling back to 1 if a parallel render fails | 130 s |
+| Pipeline order | Transcribe after cropping and re-encoding | Waiting on work it doesn't need | Transcription starts as soon as the audio exists | Overlaps with the crop |
+| Preview | The video's own controls, under the caption layers | Controls never received a click; fullscreen dropped the captions | Custom control bar above every layer; fullscreen enlarges the whole preview | Play, seek, mute and fullscreen all work |
+
+End to end, the 20 second clip went from 5 min 23 s to 2 min 15 s through the website. The project's own rule checker failed the first version on it, and passes the second on it and on the 78 second interview.
 
 ## Quick start
 
@@ -72,18 +89,19 @@ A `clip.transcript.json` next to `clip.mp4` is used instead of the API.
 | Step | File | What it does |
 |---|---|---|
 | Upload | `server/index.js` | Streams to disk with type and size checks. Plain `node:http`. |
-| Audio | `server/pipeline.js` | Probes the video, extracts 16 kHz mono audio, crops to 9:16 |
-| Transcribe | `server/transcribe.js` | ElevenLabs Scribe v2 or Whisper word timestamps, cached by audio hash |
+| Audio | `server/pipeline.js`, `server/follow.js` | Probes the video, extracts 16 kHz mono audio, finds camera cuts, crops to 9:16 following the speaker |
+| Transcribe | `server/transcribe.js` | ElevenLabs Scribe v2 or Whisper word timestamps, cached by audio hash. Starts as soon as the audio exists, while the video is still being cropped |
+| Tidy | `server/tidy.js` | Drops filler sounds (uh, um) and collapses stutters (m-moved to moved) |
 | Chunk | `server/chunk.js` | Splits words into phrases |
 | Roles | `server/roles.js` | Picks key words and big words |
-| Cut out | `server/pipeline.js` | Removes the background, only while a big word is on screen |
+| Cut out | `server/segment.js` | MODNet portrait matting, only while a big word is on screen |
 | Compose | `server/pipeline.js` | Writes a HyperFrames project |
 | Animate | `runtime/captions.js` | One GSAP timeline from the timestamps; places big words against the outline |
 | Render | `hyperframes render` | Captures frames in headless Chrome and encodes the MP4 |
 
 ### Phrases
 
-Boundaries come only from the transcript, so a 10 second clip and a 3 minute talk use the same code. A phrase ends at a pause over 350 ms, a sentence end, a comma after three words, or when it is full (four words, or the characters that fit on one line). Lines never end on weak words like "the", short leftovers are rebalanced, and words sharing a timestamp are spread one frame apart.
+Filler sounds are dropped first, and a stutter like "m-moved" reads "moved". Boundaries come only from the transcript, so a 10 second clip and a 3 minute talk use the same code. A phrase ends at a pause over 350 ms, a sentence end, a comma after three words, or when it is full (four words, or the characters that fit on one line). Lines never end on weak words like "the", short leftovers are rebalanced, and words sharing a timestamp are spread one frame apart.
 
 ### The default look
 
@@ -100,7 +118,13 @@ Full measurements are in [docs/eclipse-spec.md](docs/eclipse-spec.md). The look 
 
 The head covers 55 percent of a long word's height; a short word such as a number tucks a third of its width behind the head. If the cut-out fails, finds nobody, or the head is too low or touches the top edge, the word goes into the caption line with a warning.
 
-Background removal is the slowest step, so only the seconds with a big word are processed, in one model run, at half resolution with the mask applied to full-resolution frames. Results are cached.
+The cut-out is [MODNet](https://github.com/ZHKKKe/MODNet) (portrait matting, Apache 2.0), run in-process with onnxruntime. The 25 MB model is downloaded on first use to `~/.cache/captions` and checked against a pinned hash. Only the seconds with a big word are processed, in one pass at the model's 512 px, and the matte is applied to full-resolution frames. Results are cached. It replaced hyperframes' `u2net_human_seg`, which lost the head for half a second at a time on the sports interview, so a big word showed in front of the face. MODNet kept the head solid on every frame and runs at about 130 ms a frame on CPU instead of 700 ms.
+
+The head's height is measured ignoring spikes a few columns wide, such as a hair tuft or a raised finger. A big word is never left up across a camera cut: it is shown on the side of the cut where it is spoken, or in the caption line if that leaves less than half a second.
+
+### Following the speaker
+
+The head is located twice a second with the cut-out model on small frames (once a second past a minute). The crop holds still while the head stays within 12 percent of the crop's centre, pans at most 0.35 crop widths a second when it drifts out, and jumps on a camera cut found by ffmpeg's scene score. On the sports interview the camera pans as the speaker talks: a fixed crop left him at the frame edge, and his big word ended up across his face.
 
 ### Hinglish
 
@@ -108,7 +132,7 @@ When the transcript contains Devanagari, `server/romanize.js` converts it to cre
 
 ## Testing
 
-1. Unit tests (`npm test`, 30 tests): phrases, roles, romanizer, timestamps, custom style validation. No video or key needed.
+1. Unit tests (`npm test`, 40 tests): phrases, roles, romanizer, timestamps, filler cleanup, the following crop, custom style validation. No video or key needed.
 2. Rule checks (`node tools/check.mjs jobs/<id>`) on any composed job: big words partly but never mostly hidden, every fallback explained, text inside the frame, the right word highlighted at each timestamp, a key word in every sentence.
 3. Pixel comparison with the reference (`tools/measure/abtest.mjs`, `hyperframes snapshot --against`).
 
@@ -141,7 +165,14 @@ Three of the five big words match the reference's choices (PISCES, SPECIFICALLY,
 
 ## Performance
 
-On a 4-core i7-1165G7 with 8 GB of RAM, the 50 second reference renders in about 5 minutes. Background removal costs 15 to 45 seconds per second of big words on screen. Transcription takes seconds, once per video. HyperFrames' Lambda renderer is the next step for batch work.
+On a 4-core i7-1165G7 with 8 GB of RAM (`node tools/timeit.mjs <video>` prints each step's time):
+
+| Clip | Before | Now | Where it went |
+|---|---|---|---|
+| 20 s sports interview | 5 min 23 s | 2 min 34 s | Cut-out 68 s to 8 s (MODNet), render 230 s to 130 s (parallel capture) |
+| 78 s sports interview | | 7 min | Render 356 s, cut-out 30 s for 8 big words |
+
+HyperFrames pins one capture worker on machines with 8 GB or less. The pipeline runs up to 3, as many as the free memory allows. A parallel render that fails (Chrome timing out on a busy machine) is resumed with one worker. Transcription starts as soon as the audio exists, while the video is still being cropped. HyperFrames' Lambda renderer is the next step for batch work.
 
 ## Security
 
@@ -158,4 +189,5 @@ On a 4-core i7-1165G7 with 8 GB of RAM, the 50 second reference renders in about
 | HyperFrames | Plain HTML and GSAP, deterministic, Apache 2.0 | Remotion: React only, company licence |
 | ElevenLabs Scribe v2 | Punctuated word timestamps, Hindi, key terms, about $0.22 per hour | Whisper, with punctuation re-attached |
 | No framework, database or queue | Single-user tool with a handful of routes | A queue with Lambda rendering |
-| Fixed 9:16 crop | Steadier than following the speaker | A smoothed panning crop |
+| 9:16 crop that follows with a dead zone | Still most of the time, yet keeps the speaker framed through camera pans | A fixed crop, which lost the speaker to the frame edge |
+| MODNet via onnxruntime | Kept the head solid where u2net lost it, about 5 times faster on CPU | hyperframes' built-in `u2net_human_seg` |

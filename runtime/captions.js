@@ -16,7 +16,8 @@ function wordEl(parent, i, big = false) {
   const s = parent.appendChild(document.createElement('span'));
   // a callout only reaches the line when it could not go behind the speaker: it stays a keyword there
   s.className = `word${!big && (words[i].role === 'emphasis' || words[i].role === 'callout') ? ' emphasis' : ''}`;
-  s.textContent = words[i].text;
+  // a big word stands alone: "BEAUTIFULLY." loses its full stop, the caption line keeps its punctuation
+  s.textContent = big ? words[i].text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, '') || words[i].text : words[i].text;
   parent.append(' ');
   return s;
 }
@@ -34,7 +35,7 @@ phrases.forEach((p, n) => {
     // while a callout is up, the line sits a little higher (measured: 38-80 px on the reference)
     if (calloutIdx !== undefined && co?.lineLift) el.style.top = `-${co.lineLift}em`;
     gsap.set(el, { yPercent: -50 });
-    blocks.push([el, p.end]);
+    blocks.push([el, p.start, p.end]);
   }
 
   if (calloutIdx !== undefined) {
@@ -46,21 +47,22 @@ phrases.forEach((p, n) => {
     el.style.top = `${co.fallbackY * 100}%`;
     el.dataset.phrase = n;
     gsap.set(el, { yPercent: -100 });
-    blocks.push([el, p.callout.end]);
+    // usually the phrase's span; a camera cut can trim either end (see matte() in pipeline.js)
+    blocks.push([el, p.callout.start ?? p.start, p.callout.end]);
   }
 
   gsap.set([...spans.values()], off);
 
-  for (const [el, end] of blocks) {
+  for (const [el, start, end] of blocks) {
     if (!m.in && !m.out) { // hard cut in and out, like the reference
-      tl.set(el, { autoAlpha: 1 }, p.start);
+      tl.set(el, { autoAlpha: 1 }, start);
       tl.set(el, { autoAlpha: 0 }, end);
       continue;
     }
     const y = gsap.getProperty(el, 'yPercent');
     tl.fromTo(el, { autoAlpha: 0, scale: 0.94, yPercent: y + 10 },
-      { autoAlpha: 1, scale: 1, yPercent: y, duration: m.in, ease: 'back.out(2)', immediateRender: false }, p.start);
-    tl.to(el, { autoAlpha: 0, duration: m.out, ease: 'power1.in' }, Math.max(p.start + m.in, end - m.out));
+      { autoAlpha: 1, scale: 1, yPercent: y, duration: m.in, ease: 'back.out(2)', immediateRender: false }, start);
+    tl.to(el, { autoAlpha: 0, duration: m.out, ease: 'power1.in' }, Math.max(start + m.in, end - m.out));
   }
 
   // the pop: current word lights up, previous word settles back. transforms/colour only
@@ -115,9 +117,12 @@ function placeCallout(el, m) {
   else x = Math.max(margin, Math.min(W - margin - g.w, headL + co.tuck * g.w - g.w));
   x = Math.max(margin * 0.5, Math.min(W - margin * 0.5 - g.w, x));
 
-  // the outline under the word: its highest point decides how much of the letters is hidden
+  // the outline under the word: its highest point decides how much of the letters is hidden. A spike a
+  // few columns wide (a hair tuft, a raised finger) is skipped: on the reference-style interview a tuft
+  // decided the depth, and the word sat above the head with only the tuft overlapping it
   const c0 = Math.max(0, Math.floor(x / cw)), c1 = Math.min(gw, Math.ceil((x + g.w) / cw));
-  const under = f => Math.min(...f.slice(c0, c1)) * ch;
+  const spike = Math.min(Math.round((co.spike ?? 0) * gw), Math.floor((c1 - c0) * 0.2));
+  const under = f => f.slice(c0, c1).sort((a, b) => a - b)[spike] * ch;
   const inkH = g.asc + g.desc;
   const depthAt = (bottom, f) => Math.max(0, Math.min(1, (bottom - under(f)) / inkH));
   let bottom = narrow ? m.head.top * H + (1 + co.narrowOffset) * inkH : under(m.median) + co.depth * inkH;

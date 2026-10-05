@@ -161,7 +161,9 @@ function openJob(id, name) {
 async function loadJob() {
   const data = await (await fetch(`/api/jobs/${job.id}`)).json();
   job.words = data.words;
-  document.querySelector('.preview').style.aspectRatio = `${data.meta.width} / ${data.meta.height}`;
+  const pane = document.querySelector('.preview');
+  pane.style.aspectRatio = `${data.meta.width} / ${data.meta.height}`;
+  pane.style.setProperty('--ar', data.meta.width / data.meta.height);
   document.getElementById('preview').src = data.previewUrl;
   renderPhrases(data.phrases);
   showWarnings(data.warnings ?? []);
