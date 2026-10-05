@@ -26,7 +26,7 @@ main, section { position: relative; z-index: 1; }
 #landing {
   min-height: 100vh;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 16px; text-align: center;
+  padding: 48px 16px; text-align: center;
 }
 .wordmark {
   font-family: "Silkscreen", var(--mono);
@@ -37,7 +37,7 @@ main, section { position: relative; z-index: 1; }
   letter-spacing: .02em;
   text-shadow: .045em .045em 0 var(--ink); /* the black hint */
 }
-.tagline { font-size: clamp(17px, 2vw, 24px); line-height: 1.45; margin: 0 0 40px; opacity: .95; text-wrap: balance; }
+.tagline { font-size: clamp(13px, 4.2vw, 24px); line-height: 1.45; margin: 0 0 40px; opacity: .95; white-space: nowrap; }
 
 .bar {
   display: flex; align-items: center; gap: 8px;
@@ -72,12 +72,13 @@ select {
 .go:not(:disabled):hover { background: var(--ink-2); }
 
 .samples {
-  margin-top: 40px;
+  margin-top: 32px;
   font-family: var(--mono); font-size: 16px; color: var(--green);
   background: var(--ink); padding: 14px 28px; border-radius: 6px; text-decoration: none;
 }
 .samples:hover { transform: translateY(-1px); }
-.hint { position: absolute; bottom: 20px; font-family: var(--mono); font-size: 13px; opacity: .75; margin: 0; }
+/* in the page flow (not pinned to the bottom), so the custom panel can never push content over it */
+.hint { font-family: var(--mono); font-size: 13px; opacity: .75; margin: 28px 0 0; }
 
 /* ---------- samples ---------- */
 #samples { max-width: 1200px; margin: 0 auto; padding: 48px 16px 80px; }
@@ -132,7 +133,6 @@ select {
   .transcript { max-height: none; }
 }
 @media (max-width: 560px) {
-  .tagline br { display: none; }
   .bar { flex-wrap: wrap; }
   .drop { flex-basis: 100%; }
   select, .bar .go { flex: 1; }
@@ -141,9 +141,8 @@ select {
 /* your own ElevenLabs key, under the upload bar */
 .key-row { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 14px auto 0; width: min(520px, 100%); }
 .key-row input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, .2); background: rgba(255, 255, 255, .92); font: 14px var(--mono); }
-.key-hint { font: 12px var(--mono); color: var(--ink); opacity: .75; }
 
-/* custom look: highlight colour, caption font, words behind speaker, with a live preview chip */
+/* custom look: highlight colour, caption font, key words behind speaker */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .custom {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
@@ -161,17 +160,5 @@ select {
 .toggle input:checked + .track { background: var(--ink); }
 .toggle input:checked + .track::after { transform: translateX(16px); }
 .toggle input:focus-visible + .track { outline: 2px solid var(--green); outline-offset: 2px; }
-.chip {
-  --accent: #fee300; --line-font: "Montserrat";
-  position: relative; overflow: hidden; margin-left: auto;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  width: 150px; height: 64px; padding: 0 8px 8px; border-radius: 8px;
-  background: linear-gradient(160deg, #3a3f47, #15171a); color: var(--white);
-}
-.chip .big { position: absolute; top: 2px; left: 8px; font: 28px/1 "Anton", sans-serif; color: rgb(255 255 255 / .9); letter-spacing: .02em; }
-.chip .head { position: absolute; top: 14px; left: 30px; width: 28px; height: 34px; border-radius: 50% 50% 42% 42%; background: #8b7262; }
-.chip.flat .big, .chip.flat .head { display: none; }
-.chip .line { position: relative; z-index: 1; font: 700 13px var(--line-font), sans-serif; white-space: nowrap; }
-.chip .lit { color: var(--accent); background: color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 3px; padding: 0 3px; }
-.chip .kw { font: 14px "Anton", sans-serif; letter-spacing: .025em; }
-@media (max-width: 560px) { .chip { margin-left: 0; width: 100%; } }
+
+@media (max-width: 560px) { .key-row input { font-size: 12px; } }

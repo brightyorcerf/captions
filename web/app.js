@@ -90,17 +90,10 @@ form.addEventListener('submit', async e => {
 
 // ---------- custom look ----------
 // Default = the style measured from the reference. Custom = the same style with your highlight colour,
-// caption font and words-behind-speaker switch; the chip previews it live.
+// caption font and key-words-behind-speaker switch.
 const customEl = document.getElementById('custom');
-const chip = document.getElementById('chip');
-const FONT_FAMILY = { montserrat: 'Montserrat', inter: 'Inter', poppins: 'Poppins' };
-function syncCustom() {
-  customEl.hidden = form.elements.style.value !== 'custom';
-  chip.style.setProperty('--accent', form.elements.accent.value);
-  chip.style.setProperty('--line-font', `"${FONT_FAMILY[form.elements.font.value]}"`);
-  chip.classList.toggle('flat', !form.elements.behind.checked);
-}
-for (const name of ['style', 'accent', 'font', 'behind']) form.elements[name].addEventListener('input', syncCustom);
+const syncCustom = () => { customEl.hidden = form.elements.style.value !== 'custom'; };
+form.elements.style.addEventListener('input', syncCustom);
 syncCustom();
 
 // ---------- your own ElevenLabs key ----------
@@ -111,10 +104,7 @@ const keyRow = document.getElementById('key-row');
 try { apiKey.value = sessionStorage.getItem('elevenlabs-key') ?? ''; } catch {}
 fetch('/api/config').then(r => r.json()).then(({ serverKey }) => {
   keyRow.hidden = false;
-  if (serverKey) {
-    apiKey.placeholder = 'Your ElevenLabs API key (optional)';
-    document.getElementById('key-hint').textContent = 'Optional: the server has a key. Yours is used for this upload only, never stored.';
-  }
+  if (serverKey) apiKey.placeholder = 'ElevenLabs API key (optional), never stored';
 }).catch(() => {});
 
 // ---------- samples ----------

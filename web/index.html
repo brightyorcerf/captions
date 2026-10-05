@@ -15,7 +15,7 @@
   <!-- landing -->
   <main id="landing">
     <h1 class="wordmark">captions</h1>
-    <p class="tagline">Upload a video, get<br>scroll-stopping captions.</p>
+    <p class="tagline">Upload a video, get scroll-stopping captions.</p>
 
     <form id="upload" class="bar">
       <label class="drop" for="file">
@@ -51,18 +51,12 @@
       <label class="toggle">
         <input type="checkbox" name="behind" form="upload" checked>
         <span class="track" aria-hidden="true"></span>
-        <span>Words behind speaker</span>
+        <span>Key words behind speaker</span>
       </label>
-      <div class="chip" id="chip" aria-hidden="true">
-        <span class="big">BIG</span>
-        <span class="head"></span>
-        <span class="line">your <span class="lit">captions</span> <span class="kw">HERE</span></span>
-      </div>
     </fieldset>
 
     <div class="key-row" id="key-row" hidden>
-      <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="Your ElevenLabs API key" aria-label="ElevenLabs API key">
-      <span class="key-hint" id="key-hint">Used for this upload only. Never stored on the server.</span>
+      <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="ElevenLabs API key, never stored" aria-label="ElevenLabs API key">
     </div>
 
     <a class="samples" href="#samples" hidden>sample renders ↓</a>
