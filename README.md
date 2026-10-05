@@ -1,6 +1,6 @@
-# eclipse captions
+# captions
 
-Upload a talking-head video, get word-timed, animated **Eclipse** captions back as an MP4.
+Upload a talking-head video, get word-timed, animated captions back as an MP4. The default style, **Eclipse**, puts key words behind the speaker.
 Built for Glido Labs' round-2 take-home.
 
 ```
@@ -129,7 +129,7 @@ Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from th
 
 `samples/input/` holds the source clips and `samples/output/` holds the rendered results, one per style. The landing page lists whatever is in `samples/output/`.
 
-`synthetic-portrait.mp4` is a generated clip: macOS `say` speech over a gradient. It exercises the full render path without real footage.
+`interview-two-people` and `interview-cutaways` are renders of Creative Commons interviews from the [test set](#testing): landscape sources cropped to 9:16 around the speaker, with words behind the head (credits in [samples/CREDITS.md](samples/CREDITS.md)). `synthetic-portrait.mp4` is a generated clip: macOS `say` speech over a gradient. It exercises the full render path without real footage.
 
 **Reference check.** The Eclipse reference reel (50 s, Hinglish, already captioned) is client footage, so it is kept out of the repo. Drop it in `reference/` (gitignored) and run:
 
