@@ -72,15 +72,14 @@ Every boundary comes from the transcript JSON. There are no frame numbers anywhe
 
 ### The Eclipse style
 
-Measured from the reference video (`reference/`, not committed). The name comes from its signature move: **a giant keyword sits behind the speaker, and their head eclipses it.**
+Measured from the reference reel, not eyeballed: fonts identified by pixel-overlap scoring, colours sampled, callout timing and placement tracked frame by frame. The full spec, the method and an A/B against the reference are in **[docs/eclipse-spec.md](docs/eclipse-spec.md)**. The name comes from the signature move: **a giant keyword sits behind the speaker, and their head eclipses it.**
 
-| Element | Reference behaviour | How it's built | Token |
-|---|---|---|---|
-| Caption line | Montserrat bold, sentence case as spoken, soft shadow, 3–4 words on one line, about 76% down | `chunk()` with `maxLines: 1`; `maxChars` derived from width | `fontScale`, `charWidth`, `position`, `chunk` |
-| Active word | turns yellow `#FAE600` with a translucent yellow box, very slight pop | GSAP tween at `word.start`: colour, `backgroundColor`, `scale` | `colors.active`, `highlight`, `motion.activeScale` |
-| Spoken / upcoming words | stay white, full opacity | tween back at the next word's start | `colors.text`, `motion.dimOpacity: 1` |
-| Keywords | condensed Anton uppercase inside the line (MANGWAYA, LAZULI) | `role: 'emphasis'` from `roles.js` | `roles.emphasisMin` |
-| Callout | one word per beat, shown huge at the top, fitted to about 89% width, **behind the speaker's head**. White → yellow + box while spoken → white. Outlives its phrase. | `role: 'callout'`. The speaker is matted for that window only. The callout is placed from the matte's head line and layered video → callout → cut-out → captions. | `callout.*`, `roles.callout*` |
+| Element | Reference (measured) | Token |
+|---|---|---|
+| Caption line | Montserrat 700, 6.94 % of the short edge, pure white, faint soft shadow, no stroke, 1–4 words, **hard cut** in and out | `fontScale`, `position`, `chunk`, `motion.in/out: 0` |
+| Active word | `#FEE300` text + translucent yellow box 0.2 em around the ink, no pop | `colors.active`, `highlight`, `motion` |
+| Keywords | Anton caps inside the line, 1.11 em, 0.025 em tracking (MANGWAYA, LAZULI) | `roles.emphasisMin`, `style.css` |
+| Callout | Anton caps at a fixed 0.298 × width, left-anchored, shrunk only past 90.6 %; numbers and short words 1.22× and level with the head. **Behind the speaker's head**, lives exactly as long as its phrase, hard cut, white → yellow + box while spoken. About one per 10 s, English words or numbers only in Hinglish (*barah* → **12**). | `callout.*`, `roles.callout*` |
 
 The brief's suggested variant (1.2x pop, previous word dimmed to 50%) is a two-token change: `motion.activeScale: 1.2`, `motion.dimOpacity: 0.5`.
 
@@ -119,15 +118,16 @@ Fonts are listed as `"family/weight"` (e.g. `"montserrat/700"`) and come from th
 **Reference check.** The Eclipse reference reel (50 s, Hinglish, already captioned) is client footage, so it is kept out of the repo. Drop it in `reference/` (gitignored) and run:
 
 ```bash
-npm run caption -- reference/eclipse.mp4 --style eclipse --keyterms "Astrotalk" --out reference/out
-npx hyperframes snapshot jobs/<job-id> --at 2.6,12.5,25.5,47.5 --against reference/eclipse.mp4
+npm run caption -- reference/eclipse.mp4 --style eclipse --keyterms "Astrotalk" --no-render
+node tools/measure/abtest.mjs jobs/<job-id> reference/eclipse.mp4 22.9,27.0,28.9,46.0,47.9
+npx hyperframes snapshot jobs/<job-id> --at 22.9,28.9,47.9 --against reference/eclipse.mp4
 ```
 
-The second command writes `render | reference` pair sheets at each timestamp. The input already has the reference captions burned in, so both caption sets appear together; what to compare is how they line up. On this reel:
+`--no-render` stops after composing, which is enough to compare. `abtest.mjs` reports how far our text lands from the reference's, in pixels. `snapshot --against` writes `render | reference` pair sheets to look at. On this reel:
 
 - every Hindi word is spelled the way the reference spells it (Scribe returns Devanagari, `romanize.js` converts it);
-- callouts land at the reference's size and height, in the yellow box, behind the speaker's head;
-- callout and keyword *choices* are heuristic, so they differ from the human editor's picks in places (we pick CRYSTALS where the editor picked TIGER). Right-click a word in the editor to change it.
+- the caption line lands within 5 px of the reference, and callouts within 3–13 px in position and 3 px in height, behind the speaker's head (table in [docs/eclipse-spec.md](docs/eclipse-spec.md#ab-result));
+- 3 of the 5 callouts are the same words at the same moments (PISCES, SPECIFICALLY, 12). The other two are an editor's taste: the reference picked OBSIDIAN and TIGER. Right-click a word in the editor to change it.
 
 ## Performance
 
