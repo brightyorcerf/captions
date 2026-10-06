@@ -3,8 +3,7 @@
 ![The captions landing page](docs/hero.png)
 
 Upload a video, get scroll-stopping captions back as an MP4.
-
-Built for the Glido Labs round 2 take-home. Captions transcribes a video word by word, splits it into short phrases, highlights each word as it is spoken, and renders the result with HyperFrames.
+Captions transcribes a video word by word, splits it into short phrases, highlights each word as it is spoken, and renders the result with HyperFrames.
 
 - Default: the look measured from the Eclipse reference reel. Key words in a bold display font, and one big word every few seconds behind the speaker's head.
 - Custom: the same look with your highlight colour, one of three fonts, and words behind the speaker on or off.
